@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object", "required": ["schema_version", "sequence", "timestamp", "metadata", "game", "company", "towns", "industries", "stations", "lines", "vehicles"],
+  "properties": {"schema_version": {"const": 1}, "sequence": {"type": "integer", "minimum": 0}, "timestamp": {"type": "number"}, "metadata": {"type": "object"}, "game": {"type": "object"}, "company": {"type": "object"}, "towns": {"type": "array"}, "industries": {"type": "array"}, "stations": {"type": "array"}, "lines": {"type": "array"}, "vehicles": {"type": "array"}},
+  "additionalProperties": false
+}

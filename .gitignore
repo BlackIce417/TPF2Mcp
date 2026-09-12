@@ -1,0 +1,43 @@
+__pycache__/
+*.py[cod]
+.venv/
+bridge/
+
+# Python build/test state
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local runtime state and diagnostics
+diagnostics/
+.tmp-*/
+*.tmp
+*.lock
+*.log
+*.sqlite
+*.sqlite3
+
+# Large hand-off archives
+/*.zip
+
+# Generated save-specific railway exports
+ui/rail-map/rail-network-tiles/
+ui/rail-map/rail-network-manifest.json
+ui/rail-map/rail-network-manifest.js
+ui/rail-map/rail-network-data.json
+ui/rail-map/rail-network-data.js
+ui/rail-map/physical-track-data.json
+ui/rail-map/physical-track-data.js
+
+# UI screenshots produced during acceptance
+ui/rail-map/*.png
+
+# Local editor/OS state and secrets
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+.env
+.env.*
+!.env.example

@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "scope": "current_save",
+  "stations": [
+    {
+      "entity_id": 507665,
+      "name": "Genestrerio Forest",
+      "station_model": "FREESTYLE_STATION",
+      "note": "User identified this station as built with FreestyleStation."
+    },
+    {
+      "entity_id": 681113,
+      "name": "Varese西站",
+      "station_model": "OTHER",
+      "platform_layout": "OUTER_SIDE_OF_TERMINAL_TRACKS",
+      "platform_offset_m": 5.0,
+      "note": "User explicitly confirmed this is not a FreestyleStation station."
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tpf2-mcp.local/schemas/operational-telemetry.schema.json",
+  "title": "TPF2 Unified Operational Telemetry Discovery",
+  "type": "object",
+  "required": ["schema_version", "probe_kind", "source_status", "component_types", "systems", "clock", "signals", "track_edge_objects", "signal_edge_objects", "vehicles", "station_demand", "counts", "errors", "write_command_sent"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "probe_kind": {"const": "UNIFIED_OPERATIONAL_TELEMETRY_DISCOVERY"},
+    "source_status": {"const": "ENGINE_OBSERVED_DIAGNOSTIC"},
+    "generated_at": {"type": "number"},
+    "component_types": {"type": "object"},
+    "systems": {"type": "object"},
+    "clock": {"type": "object"},
+    "signals": {"type": "array"},
+    "track_edge_objects": {"type": "array"},
+    "signal_edge_objects": {"type": "array"},
+    "vehicles": {"type": "array"},
+    "station_demand": {"type": "array"},
+    "counts": {
+      "type": "object",
+      "required": ["signals", "signal_edge_objects", "vehicles", "stations"],
+      "properties": {
+        "signals": {"type": "integer", "minimum": 0},
+        "signal_edge_objects": {"type": "integer", "minimum": 0},
+        "vehicles": {"type": "integer", "minimum": 0},
+        "stations": {"type": "integer", "minimum": 0}
+      }
+    },
+    "duration_ms": {"type": "number", "minimum": 0},
+    "errors": {"type": "array"},
+    "write_command_sent": {"const": false}
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,14 @@
+{
+  "schema_version": 2,
+  "sequence": 1,
+  "timestamp": 0,
+  "metadata": {"sequence": 1, "timestamp": 0, "collector_status": {"towns": {"ok": true, "count": 2, "duration_ms": 0}, "industries": {"ok": true, "count": 4, "duration_ms": 0}, "stations": {"ok": true, "count": 3, "duration_ms": 0}, "lines": {"ok": true, "count": 2, "duration_ms": 0}, "vehicles": {"ok": true, "count": 3, "duration_ms": 0}, "company": {"ok": true, "count": 1, "duration_ms": 0}, "cargo_types": {"ok": true, "count": 2, "duration_ms": 0}}},
+  "game": {"status": "mock", "api_status": "UNKNOWN"},
+  "company": {"entity_id": 1, "entity_type": "company"},
+  "towns": [{"entity_id": 10, "entity_type": "town", "name": "北京"}, {"entity_id": 11, "entity_type": "town", "name": "上海"}],
+  "industries": [{"entity_id": 20, "entity_type": "industry", "name": "铁矿"}, {"entity_id": 21, "entity_type": "industry", "name": "机械厂"}, {"entity_id": 22, "entity_type": "industry", "name": "农田"}, {"entity_id": 23, "entity_type": "industry", "name": "制钢厂"}],
+  "stations": [{"entity_id": 30, "entity_type": "station_group", "name": "北京站", "station_count": 1}, {"entity_id": 31, "entity_type": "station_group", "name": "上海站", "station_count": 1}, {"entity_id": 32, "entity_type": "station_group", "name": "货运站", "station_count": 1}],
+  "lines": [{"entity_id": 40, "entity_type": "line", "name": "公交线", "stop_count": 3, "stops": [{"index": 0, "station_id": 30}, {"index": 1, "station_id": 31}, {"index": 2, "station_id": 30}]}, {"entity_id": 41, "entity_type": "line", "name": "货运线", "stop_count": 2, "stops": [{"index": 0, "station_id": 32}, {"index": 1, "station_id": 31}]}],
+  "vehicles": [{"entity_id": 50, "entity_type": "vehicle", "name": "公交车 1", "line_id": 40}, {"entity_id": 51, "entity_type": "vehicle", "name": "公交车 2", "line_id": 40}, {"entity_id": 52, "entity_type": "vehicle", "name": "货车", "line_id": 41}]
+  ,"cargo_types": [{"cargo_key": "PASSENGERS", "cargo_id": 0, "display_name": "Passengers", "index": 0}, {"cargo_key": "IRON_ORE", "cargo_id": 1, "display_name": "Iron ore", "index": 1}]
+}

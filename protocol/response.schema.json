@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TPF2 MCP bridge response",
+  "type": "object",
+  "required": ["schema_version", "request_id", "ok", "result", "error", "timestamp"],
+  "properties": {
+    "schema_version": {"const": 1}, "request_id": {"type": "string"}, "ok": {"type": "boolean"},
+    "result": {}, "error": {"type": ["object", "null"]}, "timestamp": {"type": "number"}
+  },
+  "additionalProperties": false
+}

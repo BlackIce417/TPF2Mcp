@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TPF2 MCP bridge request",
+  "type": "object",
+  "required": ["schema_version", "request_id", "command", "params", "timestamp"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "request_id": {"type": "string", "minLength": 1},
+    "command": {"enum": ["ping", "get_game_state"]},
+    "params": {"type": "object"},
+    "timestamp": {"type": "number"}
+  },
+  "additionalProperties": false
+}

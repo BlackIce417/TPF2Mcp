@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object", "required": ["schema_version", "game_running", "bridge_ready", "snapshot_seq", "last_update"],
+  "properties": {"schema_version": {"const": 1}, "game_running": {"type": "boolean"}, "bridge_ready": {"type": "boolean"}, "snapshot_seq": {"type": "integer", "minimum": 0}, "last_update": {"type": "number"}, "probe": {"type": "object"}},
+  "additionalProperties": false
+}
