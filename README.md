@@ -29,10 +29,34 @@ python -m tpf2_mcp.server
 python -m unittest discover -s tests -v
 ```
 
+The distributable Mod bundles the Python companion under `mcp_server/`. It can
+also be launched without installing the package:
+
+```powershell
+cd <TPF2-MCP-Mod-Directory>\mcp_server
+python -m pip install -r requirements.txt
+python start_server.py
+```
+
+`start_server.py` is a stdio MCP process, so an MCP client should normally use
+that script as its configured command rather than starting a separate daemon.
+The bundled browser UI is a separate local HTTP process:
+
+```powershell
+python start_ui.py
+# Open http://127.0.0.1:8765/?view=network
+```
+
 The package installation is intentional: tests do not depend on manually
 setting `PYTHONPATH`.
 
-Set `TPF2_MCP_BRIDGE_DIR` when the bridge directory differs from the Windows default (`%APPDATA%\Transport Fever 2\tpf2_mcp_bridge`). Before starting a real game, run `tools/install-mod.ps1`; on this machine it installs `tpf2_mod` to `D:\Steam\steamapps\common\Transport Fever 2\mods\tpf2_mcp_1`, then generates a matching Bridge configuration.
+The Bridge lives in `bridge/` beside the installed mod, for example
+`...\Transport Fever 2\mods\tpf2mcp_1\bridge`. Python locates Steam and the
+installed `tpf2_mcp` runtime dynamically; `TPF2_GAME_DIR`, `TPF2_MCP_MOD_DIR`,
+and `TPF2_MCP_BRIDGE_DIR` remain explicit overrides. Before starting a real
+game, run `tools/install-mod.ps1`; it discovers the Steam library, installs
+`tpf2_mod`, creates the adjacent Bridge, and writes only machine-local safety
+switches to `local_config.lua`.
 
 ## Live capability status
 

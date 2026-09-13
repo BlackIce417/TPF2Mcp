@@ -14,4 +14,4 @@ Python writers create a same-directory temporary file and atomically replace the
 
 For testing without the game, `MockBridge` returns `tests/fixtures/world_snapshot_001.json`. Use `TPF2_MCP_MOCK=1`.
 
-The default bridge directory is `%APPDATA%\Transport Fever 2\tpf2_mcp_bridge`. Its availability to the TPF2 sandbox is not assumed: `io.open`, absolute paths, and atomic rename are probed and reported through `heartbeat.json`.
+The default Bridge directory is `bridge/` beside the installed TPF2 MCP mod. The Python side discovers Steam libraries and the installed mod dynamically; explicit `TPF2_GAME_DIR`, `TPF2_MCP_MOD_DIR`, and `TPF2_MCP_BRIDGE_DIR` overrides remain available. Its availability to the TPF2 sandbox is not assumed: `io.open`, absolute paths, and atomic rename are probed and reported through `heartbeat.json`.

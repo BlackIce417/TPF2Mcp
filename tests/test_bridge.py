@@ -19,6 +19,13 @@ class BridgeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             self.assertFalse(BridgeClient(Path(directory)).status()["connected"])
 
+    def test_protocol_directories_are_created_on_first_call(self):
+        with tempfile.TemporaryDirectory() as directory:
+            bridge = Path(directory) / "mod" / "bridge"
+            client = BridgeClient(bridge)
+            client._prepare_directory()
+            self.assertTrue((bridge / "responses").is_dir())
+
     def test_request_specific_ready_marked_response(self):
         with tempfile.TemporaryDirectory() as directory:
             bridge_dir = Path(directory)

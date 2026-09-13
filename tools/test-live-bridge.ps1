@@ -1,11 +1,15 @@
 param(
-    [string]$BridgeDirectory = "$env:APPDATA\Transport Fever 2\tpf2_mcp_bridge",
+    [string]$BridgeDirectory = "",
     [string]$Python = "python"
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $env:PYTHONPATH = Join-Path $root 'mcp_server\src'
+if ([string]::IsNullOrWhiteSpace($BridgeDirectory)) {
+    $BridgeDirectory = ((& $Python -c 'from tpf2_mcp.config import bridge_dir; print(bridge_dir())') | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($BridgeDirectory)) { throw 'Unable to locate the installed TPF2 MCP bridge.' }
+}
 Remove-Item Env:TPF2_MCP_MOCK -ErrorAction SilentlyContinue
 $env:TPF2_MCP_BRIDGE_DIR = $BridgeDirectory
 

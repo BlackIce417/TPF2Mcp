@@ -1,10 +1,16 @@
 param(
-    [string]$BridgeDirectory = "$env:APPDATA\Transport Fever 2\tpf2_mcp_bridge",
-    [string]$Tpf2StdoutPath = ""
+    [string]$BridgeDirectory = "",
+    [string]$Tpf2StdoutPath = "",
+    [string]$Python = "python"
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
+$env:PYTHONPATH = Join-Path $root 'mcp_server\src'
+if ([string]::IsNullOrWhiteSpace($BridgeDirectory)) {
+    $BridgeDirectory = ((& $Python -c 'from tpf2_mcp.config import bridge_dir; print(bridge_dir())') | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($BridgeDirectory)) { throw 'Unable to locate the installed TPF2 MCP bridge.' }
+}
 $defaultStdoutCandidates = @(
     (Join-Path $env:APPDATA 'Transport Fever 2\stdout.txt')
 ) + (Get-ChildItem -Path 'D:\Steam\userdata\*\1066780\local\crash_dump\stdout.txt' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -ExpandProperty FullName)

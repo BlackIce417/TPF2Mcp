@@ -4,9 +4,14 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import os
+import sys
 from collections import defaultdict, deque
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "mcp_server" / "src"))
+
+from tpf2_mcp.config import bridge_dir  # noqa: E402
 
 
 def curve_length(edge: dict, nodes: dict[int, dict], steps: int = 64) -> float:
@@ -111,7 +116,7 @@ def terminal_curve_to_throat_length(node_id: int, track_type: int, edges: list[d
 
 
 def main() -> None:
-    default_input = Path(os.environ["APPDATA"]) / "Transport Fever 2" / "tpf2_mcp_bridge" / "station-geometry.json"
+    default_input = bridge_dir() / "station-geometry.json"
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", type=Path, default=default_input)
     parser.add_argument("--output-directory", type=Path, default=Path("ui/rail-map"))

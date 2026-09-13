@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import time
 import urllib.request
@@ -13,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "mcp_server" / "src"))
 
 from tpf2_mcp.dwell_optimizer import optimize_dwell_times  # noqa: E402
+from tpf2_mcp.config import bridge_dir  # noqa: E402
 
 
 def read_json(path: Path) -> dict:
@@ -32,7 +32,7 @@ def main() -> None:
     parser.add_argument("--output-directory", type=Path, default=ROOT / "diagnostics" / "rail-operations")
     parser.add_argument("--quiet", action="store_true", help="Suppress per-frame progress while retaining the final summary.")
     args = parser.parse_args()
-    bridge = Path(os.environ["APPDATA"]) / "Transport Fever 2" / "tpf2_mcp_bridge"
+    bridge = bridge_dir()
     frames, last_sample = [], None
     deadline = time.monotonic() + max(0, args.duration_seconds)
     while True:

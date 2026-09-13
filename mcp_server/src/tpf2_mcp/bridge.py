@@ -79,6 +79,10 @@ class BridgeClient:
         self.timeout_seconds = timeout_seconds
         self.poll_seconds = poll_seconds
 
+    def _prepare_directory(self) -> None:
+        self.directory.mkdir(parents=True, exist_ok=True)
+        (self.directory / "responses").mkdir(parents=True, exist_ok=True)
+
     def status(self) -> dict[str, Any]:
         heartbeat = _read_json(self.directory / "heartbeat.json")
         if heartbeat is None:
@@ -88,6 +92,7 @@ class BridgeClient:
                 "bridge_dir": str(self.directory), "heartbeat_age_seconds": round(age_seconds, 3), **heartbeat}
 
     def call(self, command: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        self._prepare_directory()
         with _mailbox_lock(self.directory, self.timeout_seconds, self.poll_seconds):
             payload = request(command, params)
             _atomic_json_write(self.directory / "command.json", payload)

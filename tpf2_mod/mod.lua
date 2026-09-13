@@ -7,7 +7,7 @@ function data()
             name = _("TPF2_MCP_NAME"),
             description = _("TPF2_MCP_DESCRIPTION"),
             tags = { "Script Mod", "MCP" },
-            authors = { { name = "TPF2 MCP", role = "CREATOR" } },
+            authors = { { name = "BlackIce", role = "CREATOR" } },
         },
         runFn = function(settings)
             print("[tpf2-mcp][INFO] mod configuration loaded")

@@ -10,12 +10,17 @@ local probe = { attempted = false }
 local started = false
 local update_count = 0
 
-local function path(name) return config.bridge_dir .. "/" .. name end
+local function path(name)
+    if type(config.bridge_dir) ~= "string" or config.bridge_dir == "" then return nil end
+    return config.bridge_dir .. "/" .. name
+end
 local function now() return os and os.time and os.time() or 0 end
 
 local function read_file(name)
     if not io or type(io.open) ~= "function" then return nil, "io.open unavailable" end
-    local handle, err = io.open(path(name), "r")
+    local target = path(name)
+    if target == nil then return nil, "bridge directory unavailable" end
+    local handle, err = io.open(target, "r")
     if not handle then return nil, err end
     local content = handle:read("*a")
     handle:close()
@@ -24,7 +29,9 @@ end
 
 local function write_file(name, content)
     if not io or type(io.open) ~= "function" then return false, "io.open unavailable" end
-    local handle, err = io.open(path(name), "w")
+    local target = path(name)
+    if target == nil then return false, "bridge directory unavailable" end
+    local handle, err = io.open(target, "w")
     if not handle then return false, err end
     handle:write(content)
     handle:flush()
@@ -50,7 +57,9 @@ end
 
 local function raw_write(name, content)
     if not io or type(io.open) ~= "function" then return false, "io.open unavailable" end
-    local handle, err = io.open(path(name), "w")
+    local target = path(name)
+    if target == nil then return false, "bridge directory unavailable" end
+    local handle, err = io.open(target, "w")
     if not handle then return false, err end
     handle:write(content)
     handle:close()
@@ -61,7 +70,8 @@ local function run_probe()
     local result = {
         attempted = true, lua_version = _VERSION or "UNKNOWN", require = false,
         io_open = false, io_read = false, io_write = false, os_rename = false,
-        os_remove = false, absolute_path = false, api = false, api_engine = false,
+        os_remove = false, absolute_path = false, path_resolved = false,
+        api = false, api_engine = false,
         get_world = false, get_player = false,
     }
     probe_call(result, "require", function()
@@ -74,6 +84,9 @@ local function run_probe()
         if not candidate:match("^[A-Za-z]:/") then return false, "bridge path is not an absolute drive path" end
         return raw_write("probe-absolute.tmp", "absolute")
     end)
+    result.path_resolved = config.path_resolution == "MODULE_SOURCE"
+        and type(config.mod_dir) == "string" and config.mod_dir ~= ""
+        and type(config.bridge_dir) == "string" and config.bridge_dir ~= ""
     probe_call(result, "io_write", function() return raw_write("probe-write.tmp", "tpf2-mcp probe\n") end)
     probe_call(result, "io_read", function()
         local content, err = read_file("probe-write.tmp")
@@ -116,7 +129,14 @@ local function heartbeat()
         game_running = true,
         -- The live TPF2 sandbox has no os.rename/os.remove. Lua writes each
         -- response once under its request ID, then writes a ready marker.
-        bridge_ready = probe.io_read and probe.io_write and probe.absolute_path,
+        -- TPF2 may report the loaded module path relative to the game root.
+        -- Successful read/write is the authoritative check that the resolved
+        -- per-Mod bridge directory is usable; a drive-letter path is optional.
+        bridge_ready = probe.io_read and probe.io_write and probe.path_resolved,
+        bridge_dir = config.bridge_dir,
+        mod_dir = config.mod_dir,
+        module_path = config.module_path,
+        path_resolution = config.path_resolution,
         snapshot_seq = sequence,
         last_update = now(),
         probe = probe,

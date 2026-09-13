@@ -1,0 +1,2 @@
+# TPF2 MCP currently has no third-party runtime dependencies.
+# Python 3.11 or newer is required.

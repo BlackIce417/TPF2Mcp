@@ -14,6 +14,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "mcp_server" / "src"))
+
+from tpf2_mcp.config import bridge_dir  # noqa: E402
+
 LIVE_URL = "http://127.0.0.1:8765/api/live"
 STATUS_URL = "http://127.0.0.1:8765/api/status"
 
@@ -108,7 +112,7 @@ def main() -> int:
     args = parser.parse_args()
 
     target = None if args.continuous else deadline_today(args.until)
-    bridge = Path(os.environ["APPDATA"]) / "Transport Fever 2" / "tpf2_mcp_bridge"
+    bridge = bridge_dir()
     snapshot = bridge / "state.json"
     main_plan = ROOT / "diagnostics" / "rail-operations" / "line-timetable-plan.json"
     args.output_directory.mkdir(parents=True, exist_ok=True)

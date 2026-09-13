@@ -18,6 +18,7 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPOSITORY / "mcp_server" / "src"))
 
 from tpf2_mcp.bridge import BridgeClient, BridgeError  # noqa: E402
+from tpf2_mcp.config import bridge_dir  # noqa: E402
 from tpf2_mcp.dispatch import vehicle_dispatch_state  # noqa: E402
 from tpf2_mcp.rail_live import RailSpatialIndex, derive_blocks, normalize_live_state, normalize_signals  # noqa: E402
 from tpf2_mcp.save_scope import snapshot_save_id  # noqa: E402
@@ -658,7 +659,7 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--ui-directory", type=Path, default=repository / "ui" / "rail-map")
-    parser.add_argument("--bridge-directory", type=Path, default=Path(os.environ["APPDATA"]) / "Transport Fever 2" / "tpf2_mcp_bridge")
+    parser.add_argument("--bridge-directory", type=Path, default=bridge_dir())
     parser.add_argument("--live-poll-seconds", type=float, default=1.5)
     args = parser.parse_args()
     app = RailMapState(args.ui_directory.resolve(), args.bridge_directory.resolve(), repository / "tools" / "export-rail-network-map.py", args.live_poll_seconds)

@@ -5,7 +5,6 @@ import argparse
 import heapq
 import json
 import math
-import os
 import statistics
 import time
 import sys
@@ -17,6 +16,7 @@ sys.path.insert(0, str(REPOSITORY / "mcp_server" / "src"))
 
 from tpf2_mcp.station_preview import build_station_platforms, write_station_previews  # noqa: E402
 from tpf2_mcp.rail_crossings import detect_grade_separated_crossings  # noqa: E402
+from tpf2_mcp.config import bridge_dir  # noqa: E402
 
 
 def curve_length(edge: dict, nodes: dict[int, dict], steps: int = 12) -> float:
@@ -1075,7 +1075,7 @@ def apply_station_model_ground_truth(result: dict, ground_truth: dict) -> None:
 
 
 def main() -> None:
-    default_input = Path(os.environ["APPDATA"]) / "Transport Fever 2" / "tpf2_mcp_bridge" / "rail-network.json"
+    default_input = bridge_dir() / "rail-network.json"
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", type=Path, default=default_input)
     parser.add_argument("--output-directory", type=Path, default=Path("ui/rail-map"))

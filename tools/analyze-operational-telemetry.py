@@ -3,8 +3,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
+import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "mcp_server" / "src"))
+
+from tpf2_mcp.config import bridge_dir  # noqa: E402
 
 
 def observed_number(fields: dict | None, name: str) -> bool:
@@ -54,7 +59,7 @@ def analyze(report: dict) -> dict:
 
 
 def main() -> None:
-    bridge = Path(os.environ["APPDATA"]) / "Transport Fever 2" / "tpf2_mcp_bridge"
+    bridge = bridge_dir()
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", type=Path, default=bridge / "operational-telemetry.json")
     parser.add_argument("--output", type=Path, default=Path("diagnostics/operational-telemetry-readiness.json"))

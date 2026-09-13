@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import time
 from pathlib import Path
@@ -12,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "mcp_server" / "src"))
 
 from tpf2_mcp.bridge import BridgeClient  # noqa: E402
+from tpf2_mcp.config import bridge_dir  # noqa: E402
 from tpf2_mcp.operations import OperationController  # noqa: E402
 from tpf2_mcp.snapshot import SnapshotIndex  # noqa: E402
 
@@ -28,7 +28,7 @@ def main() -> int:
     parser.add_argument("--observe-seconds", type=float, default=8)
     parser.add_argument("--evidence-directory", type=Path, required=True)
     args = parser.parse_args()
-    bridge_dir = Path(os.environ["APPDATA"]) / "Transport Fever 2" / "tpf2_mcp_bridge"
+    bridge_directory = bridge_dir()
     bridge = BridgeClient(timeout_seconds=60)
     current = SnapshotIndex(bridge.game_state(force_refresh=True))
 
@@ -68,7 +68,7 @@ def main() -> int:
     write(args.evidence_directory, "03-hold-verification.json", hold_verification)
     time.sleep(max(0, min(args.observe_seconds, args.max_hold_seconds - 5)))
     bridge.call("get_operational_telemetry", {"section": "vehicles_live"})
-    telemetry = json.loads((bridge_dir / "operational-telemetry-vehicles_live.json").read_text(encoding="utf-8"))
+    telemetry = json.loads((bridge_directory / "operational-telemetry-vehicles_live.json").read_text(encoding="utf-8"))
     observed = next((item for item in telemetry.get("vehicles", []) if item.get("entity_id") == args.vehicle_id), None)
     write(args.evidence_directory, "04-held-observation.json", observed)
 
