@@ -1,0 +1,30 @@
+<template id="vehicle-sidebar-template">
+    <div class="sidebar-view vehicle-sidebar">
+        <div class="panel-title"><span data-field="vehicle-name"></span> · 列车运行信息</div>
+        <div class="section">
+            <div class="kv"><span>列车 ID</span><b data-field="vehicle-id"></b></div>
+            <div class="kv"><span>所属线路</span><b data-field="line-name"></b></div>
+            <div class="kv"><span>当前速度</span><b data-field="speed"></b></div>
+            <div class="kv"><span>运行状态</span><b data-field="status"></b></div>
+            <div class="kv"><span>下一站</span><b data-field="next-station"></b></div>
+        </div>
+        <div class="panel-title">当前装载</div>
+        <div class="section vehicle-load">
+            <div class="kv"><span>总装载 / 容量</span><b data-field="total-load"></b></div>
+            <div class="kv"><span>旅客</span><b data-field="passengers"></b></div>
+            <div class="kv"><span>货物</span><b data-field="cargo"></b></div>
+            <div data-slot="cargo-types"></div>
+            <div data-slot="load-status"></div>
+        </div>
+        <div class="panel-title">位置与控制</div>
+        <div class="section">
+            <div class="kv"><span>区间</span><b data-field="block"></b></div>
+            <div class="kv"><span>位置来源</span><b data-field="position-source"></b></div>
+            <div class="kv"><span>定位保持</span><b data-field="position-stale"></b></div>
+        </div>
+    </div>
+</template>
+
+<template id="cargo-row-template">
+    <div class="kv"><span data-field="cargo-name"></span><b data-field="amount"></b></div>
+</template>

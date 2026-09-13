@@ -92,6 +92,21 @@ class TimetablePlannerTests(unittest.TestCase):
         self.assertTrue(line["fleet_policy"]["consist_constraint"]["expansion_allowed"])
         self.assertIn(line["fleet_policy"]["consist_constraint"]["expansion_template_vehicle_id"], {1, 2})
 
+    def test_recent_verified_fleet_change_blocks_repeat_proposal_during_settlement(self):
+        snapshot, manifest, frames = fixture()
+        for vehicle in snapshot["vehicles"]:
+            vehicle.update(capacity_total=100, capacity_by_cargo=[{"cargo_id": 0, "capacity": 100}],
+                           consist_signature="91:92", consist_top_speed_kmh=250, consist_length_m=150)
+        samples = [{"passengers": {"truncated": False, "total_for_line": 390, "onboard": 190,
+                                    "waiting": 200, "average_waiting_seconds": 300}}] * 3
+
+        line = plan_line_timetables(snapshot, manifest, frames, {7: samples}, {7})["lines"][0]
+
+        self.assertEqual("HOLD_FLEET", line["fleet_policy"]["decision"])
+        self.assertEqual("ADD_ONE_PROPOSAL", line["fleet_policy"]["underlying_decision"])
+        self.assertTrue(line["fleet_policy"]["fleet_change_cooldown"])
+        self.assertEqual("COOLDOWN_AFTER_VERIFIED_CHANGE", line["fleet_policy"]["execution_eligibility"])
+
     def test_short_or_unknown_platform_blocks_consist_expansion(self):
         snapshot, manifest, frames = fixture()
         for vehicle in snapshot["vehicles"]:
@@ -136,12 +151,30 @@ class TimetablePlannerTests(unittest.TestCase):
         snapshot["vehicles"].append({"entity_id": 3, "line_id": 8, "capacity_total": 100})
         manifest["lines"].append({**manifest["lines"][0], "entity_id": 8, "name": "P2"})
         samples = {
-            7: [{"passengers": {"truncated": False, "total_for_line": 100, "onboard": 80, "waiting": 20}}],
-            8: [{"passengers": {"truncated": False, "total_for_line": 0, "onboard": 0, "waiting": 0}}],
+            7: [{"passengers": {"truncated": False, "total_for_line": 100, "onboard": 80, "waiting": 20,
+                                  "journey_granularity": "LINE_STOP_OD", "by_journey": [
+                                      {"line_stop_0": 0, "line_stop_1": 1, "onboard": 80, "waiting": 20, "total": 100}]}}],
+            8: [{"passengers": {"truncated": False, "total_for_line": 0, "onboard": 0, "waiting": 0,
+                                  "journey_granularity": "LINE_STOP_OD", "by_journey": []}}],
         }
 
         result = plan_line_timetables(snapshot, manifest, frames, samples)
         diagnostic = result["parallel_service_diagnostics"][0]
 
-        self.assertEqual("SEVERE_ASSIGNED_DEMAND_IMBALANCE", diagnostic["status"])
+        self.assertEqual("OBSERVED_PARALLEL_OD_IMBALANCE", diagnostic["status"])
         self.assertEqual("UNAVAILABLE", diagnostic["direct_reassignment"])
+        self.assertTrue(diagnostic["observation_only"])
+        self.assertFalse(diagnostic["automatic_decision"])
+        self.assertIsNone(diagnostic["proposed_adjustment"])
+
+    def test_parallel_line_advice_requires_exact_od_evidence(self):
+        snapshot, manifest, frames = fixture()
+        snapshot["lines"].append({"entity_id": 8, "frequency_seconds": 120, "throughput": 200})
+        snapshot["vehicles"].append({"entity_id": 3, "line_id": 8, "capacity_total": 100})
+        manifest["lines"].append({**manifest["lines"][0], "entity_id": 8, "name": "P2"})
+        legacy = {7: [{"passengers": {"truncated": False, "onboard": 100, "waiting": 100}}],
+                  8: [{"passengers": {"truncated": False, "onboard": 0, "waiting": 0}}]}
+
+        result = plan_line_timetables(snapshot, manifest, frames, legacy)
+
+        self.assertEqual([], result["parallel_service_diagnostics"])

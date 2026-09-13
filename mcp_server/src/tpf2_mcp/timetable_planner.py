@@ -7,6 +7,7 @@ from collections import defaultdict
 from typing import Any
 
 from .fleet_policy import evaluate_fleet_adjustment
+from .save_scope import snapshot_save_id
 
 
 def _length(points: list[list[float]]) -> float:
@@ -87,7 +88,8 @@ def _capacity_map(vehicle: dict[str, Any]) -> dict[int, float]:
 
 
 def _fleet_demand_profile(line_plan: dict[str, Any], vehicles: list[dict[str, Any]],
-                          samples: list[dict[str, Any]]) -> tuple[dict[str, Any], dict[str, Any]]:
+                          samples: list[dict[str, Any]], fleet_change_cooldown: bool = False
+                          ) -> tuple[dict[str, Any], dict[str, Any]]:
     service = line_plan["service_class"]
     latest = samples[-1] if samples else {}
     demand_key = "passengers" if service == "PASSENGER" else "cargo" if service == "FREIGHT" else None
@@ -125,6 +127,10 @@ def _fleet_demand_profile(line_plan: dict[str, Any], vehicles: list[dict[str, An
         "average_waiting_seconds": demand.get("average_waiting_seconds"),
         "load_factor": round(demand.get("onboard", 0) / total_capacity, 3) if total_capacity > 0 else None,
         "demanded_cargo_ids": demanded_cargo_ids,
+        "truncated": demand.get("truncated"),
+        "journey_granularity": demand.get("journey_granularity"),
+        "journey_unknown": demand.get("journey_unknown"),
+        "by_journey": demand.get("by_journey", []),
     }
     constraint = {
         "policy": "CLONE_EXISTING_LINE_CONSIST_ONLY",
@@ -142,40 +148,99 @@ def _fleet_demand_profile(line_plan: dict[str, Any], vehicles: list[dict[str, An
         "blocked_reason": None if template_safe else "line must have one verified speed class; every vehicle and the clone template must support the required cargo; an exact consist signature and verified train-length/platform-length fit are required",
         "guarantee": "A purchase copies an existing consist from this line; it cannot introduce another train family or cargo capability.",
     }
+    underlying_decision = fleet["decision"]
+    execution_eligibility = (
+        "COOLDOWN_AFTER_VERIFIED_CHANGE"
+        if underlying_decision in {"ADD_ONE_PROPOSAL", "REMOVE_ONE_PROPOSAL"} and fleet_change_cooldown
+        else "PROPOSAL_READY" if fleet["decision"] == "ADD_ONE_PROPOSAL" and template_safe
+        else "BLOCKED_BY_CONSIST_CONSTRAINT" if fleet["decision"] in {"ADD_ONE_PROPOSAL", "REMOVE_ONE_PROPOSAL"} and not template_safe
+        else "NO_FLEET_CHANGE"
+    )
+    if execution_eligibility == "COOLDOWN_AFTER_VERIFIED_CHANGE":
+        fleet["decision"] = "HOLD_FLEET"
+        fleet["underlying_decision"] = underlying_decision
+        fleet["hold_reason"] = "RECENT_FLEET_CHANGE_OR_ROLLED_BACK_ATTEMPT"
     fleet.update({"demand": latest_metrics, "effective_capacity_total": total_capacity or None,
                   "consist_constraint": constraint, "automatic_add": False, "automatic_remove": False,
-                  "execution_eligibility": (
-                      "PROPOSAL_READY" if fleet["decision"] == "ADD_ONE_PROPOSAL" and template_safe
-                      else "BLOCKED_BY_CONSIST_CONSTRAINT" if fleet["decision"] in {"ADD_ONE_PROPOSAL", "REMOVE_ONE_PROPOSAL"} and not template_safe
-                      else "NO_FLEET_CHANGE"
-                  )})
+                  "fleet_change_cooldown": fleet_change_cooldown,
+                  "execution_eligibility": execution_eligibility})
     return fleet, latest_metrics
 
 
-def _parallel_service_diagnostics(plans: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    groups: dict[tuple[str, int, int], list[dict[str, Any]]] = defaultdict(list)
+def _parallel_service_diagnostics(plans: list[dict[str, Any]], cargo_names: dict[int, str] | None = None) -> list[dict[str, Any]]:
+    cargo_names = cargo_names or {}
+    def station_pairs(plan: dict[str, Any]) -> set[tuple[int, int]]:
+        stations = sorted({int(stop["station_group_id"]) for stop in plan.get("stops", [])
+                           if isinstance(stop.get("station_group_id"), int)})
+        return {(left, right) for index, left in enumerate(stations) for right in stations[index + 1:]}
+
+    def cargo_supported(plan: dict[str, Any], cargo_id: int) -> bool:
+        if plan.get("service_class") == "PASSENGER":
+            return cargo_id == 0
+        sets = ((plan.get("fleet_policy") or {}).get("consist_constraint") or {}).get("cargo_compatibility_sets", [])
+        return bool(sets) and all(cargo_id in values for values in sets)
+
+    demand_by_line: dict[int, dict[tuple[int, int, int], dict[str, int]]] = {}
+    observed_keys: set[tuple[str, int, int, int]] = set()
+    complete_lines: set[int] = set()
     for plan in plans:
-        stops = [stop.get("station_group_id") for stop in plan.get("stops", []) if isinstance(stop.get("station_group_id"), int)]
-        pairs = {(min(left, right), max(left, right)) for left, right in zip(stops, stops[1:]) if left != right}
-        for left, right in pairs:
-            groups[(plan["service_class"], left, right)].append(plan)
+        line_id, demand = plan["line_id"], plan.get("demand") or {}
+        if demand.get("journey_granularity") != "LINE_STOP_OD" or demand.get("truncated") is not False:
+            continue
+        complete_lines.add(line_id)
+        stops = {index: stop.get("station_group_id") for index, stop in enumerate(plan.get("stops", []))}
+        line_values: dict[tuple[int, int, int], dict[str, int]] = {}
+        for journey in demand.get("by_journey", []):
+            left, right = stops.get(journey.get("line_stop_0")), stops.get(journey.get("line_stop_1"))
+            if not isinstance(left, int) or not isinstance(right, int) or left == right:
+                continue
+            origin, destination = sorted((left, right))
+            cargo_values = journey.get("by_cargo", []) if plan["service_class"] == "FREIGHT" else [{
+                "cargo_id": 0, "onboard": journey.get("onboard", 0), "waiting": journey.get("waiting", 0), "total": journey.get("total", 0),
+            }]
+            for cargo in cargo_values:
+                cargo_id = cargo.get("cargo_id")
+                if not isinstance(cargo_id, int):
+                    continue
+                key = (origin, destination, cargo_id)
+                value = line_values.setdefault(key, {"onboard": 0, "waiting": 0, "total": 0})
+                for field in value:
+                    value[field] += int(cargo.get(field) or 0)
+                observed_keys.add((plan["service_class"], origin, destination, cargo_id))
+        demand_by_line[line_id] = line_values
+
     result = []
-    for (service, origin, destination), members in groups.items():
+    pairs_by_line = {plan["line_id"]: station_pairs(plan) for plan in plans}
+    for service, origin, destination, cargo_id in sorted(observed_keys):
+        members = [plan for plan in plans if plan["line_id"] in complete_lines
+                   and plan["service_class"] == service
+                   and (origin, destination) in pairs_by_line[plan["line_id"]]
+                   and cargo_supported(plan, cargo_id)]
         if len(members) < 2:
             continue
-        totals = [((member.get("demand") or {}).get("onboard") or 0) + ((member.get("demand") or {}).get("waiting") or 0)
+        values = [demand_by_line.get(member["line_id"], {}).get((origin, destination, cargo_id), {"onboard": 0, "waiting": 0, "total": 0})
                   for member in members]
+        totals = [value["total"] for value in values]
         total = sum(totals)
         shares = [value / total if total else 0 for value in totals]
-        imbalance = total > 0 and max(shares) >= .8 and min(shares) <= .2
+        imbalance = total >= 20 and max(shares) >= .8 and min(shares) <= .2
+        station_names = {}
+        for member in members:
+            station_names.update({stop.get("station_group_id"): stop.get("station_name") for stop in member.get("stops", [])})
         result.append({
             "service_class": service, "shared_station_pair": [origin, destination],
-            "lines": [{"line_id": member["line_id"], "demand": value, "demand_share": round(share, 3),
-                       "headway_seconds": member["headway_seconds"]} for member, value, share in zip(members, totals, shares)],
-            "status": "SEVERE_ASSIGNED_DEMAND_IMBALANCE" if imbalance else "BALANCED_OR_INSUFFICIENT_EVIDENCE",
+            "shared_station_names": [station_names.get(origin), station_names.get(destination)],
+            "cargo_id": cargo_id, "cargo_name": "乘客" if cargo_id == 0 else cargo_names.get(cargo_id),
+            "lines": [{"line_id": member["line_id"], "line_name": member.get("line_name") or f"线路 {member['line_id']}",
+                       "demand": value["total"], "onboard": value["onboard"],
+                       "waiting": value["waiting"], "demand_share": round(share, 3),
+                       "headway_seconds": member["headway_seconds"]} for member, value, share in zip(members, values, shares)],
+            "status": "OBSERVED_PARALLEL_OD_IMBALANCE" if imbalance else "BALANCED_OR_INSUFFICIENT_EVIDENCE",
             "direct_reassignment": "UNAVAILABLE",
-            "demand_granularity": "whole-line assigned demand; OD-specific entity destination remains UNKNOWN",
-            "available_lever": "change relative frequency/travel time, then observe game path-choice redistribution",
+            "demand_granularity": "ENGINE_COMPONENT_LINE_STOP_OD",
+            "observation_only": True,
+            "automatic_decision": False,
+            "proposed_adjustment": None,
         })
     return result
 
@@ -224,10 +289,12 @@ def _coordinate_station_phases(plans: list[dict[str, Any]], horizon: int = 3600,
 
 def plan_line_timetables(snapshot: dict[str, Any], manifest: dict[str, Any],
                          frames: list[dict[str, Any]] | None = None,
-                         demand_samples_by_line: dict[int, list[dict[str, Any]]] | None = None) -> dict[str, Any]:
+                         demand_samples_by_line: dict[int, list[dict[str, Any]]] | None = None,
+                         recent_fleet_change_line_ids: set[int] | None = None) -> dict[str, Any]:
     """Create one repeating template per line; vehicles occupy evenly spaced phases."""
     frames = frames or []
     demand_samples_by_line = demand_samples_by_line or {}
+    recent_fleet_change_line_ids = recent_fleet_change_line_ids or set()
     snapshot_lines = {int(item["entity_id"]): item for item in snapshot.get("lines", [])}
     manifest_lines = {int(item["entity_id"]): item for item in manifest.get("lines", [])}
     stations = {int(item["entity_id"]): item for item in manifest.get("stations", [])}
@@ -371,7 +438,9 @@ def plan_line_timetables(snapshot: dict[str, Any], manifest: dict[str, Any],
             },
         }
         samples = demand_samples_by_line.get(line_id) or demand_samples_by_line.get(str(line_id)) or []
-        plan["fleet_policy"], plan["demand"] = _fleet_demand_profile(plan, assigned, samples)
+        plan["fleet_policy"], plan["demand"] = _fleet_demand_profile(
+            plan, assigned, samples, line_id in recent_fleet_change_line_ids
+        )
         plan["source_status"]["demand"] = "ENGINE_COMPONENT_CLASSIFIED_HISTORY" if samples else "UNAVAILABLE"
         plans.append(plan)
 
@@ -392,11 +461,16 @@ def plan_line_timetables(snapshot: dict[str, Any], manifest: dict[str, Any],
                 "status": "STATION_PHASE_COORDINATED_SECTION_OCCUPANCY_PENDING",
             })
     return {
-        "schema_version": 1, "plan_kind": "LINE_TEMPLATE_CYCLIC_TIMETABLE", "automatic_apply": False,
+        "schema_version": 2, "save_id": snapshot_save_id(snapshot),
+        "plan_kind": "LINE_TEMPLATE_CYCLIC_TIMETABLE", "automatic_apply": False,
         "epoch_game_time_ms": epoch_ms, "counts": {"planned_lines": len(plans), "excluded_lines": len(excluded)},
         "lines": plans, "excluded": excluded, "global_conflict_plan": conflict_plan,
         "shared_track_conflicts": unresolved_shared_track,
-        "parallel_service_diagnostics": _parallel_service_diagnostics(plans),
+        "parallel_service_diagnostics": _parallel_service_diagnostics(
+            plans,
+            {int(item["cargo_id"]): str(item.get("display_name") or item.get("cargo_key") or item["cargo_id"])
+             for item in snapshot.get("cargo_types", []) if isinstance(item.get("cargo_id"), int)},
+        ),
             "execution_contract": {
             "unit": "one timetable template per line; assigned vehicles use evenly spaced phases",
             "early_ready": "hold that vehicle at the terminal until its line slot",

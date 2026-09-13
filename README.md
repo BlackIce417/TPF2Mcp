@@ -72,10 +72,28 @@ through `updateLine`. Observed frequency and throughput are not direct
 settings. Automatic optimization remains plan-only. A bounded
 `get_line_demand` Bridge probe now supplies live line-assigned onboard/waiting
 passenger and freight totals, observed freight cargo types, and waiting-time
-samples; it does not claim per-vehicle occupancy, station-wide waiting,
-OD-specific allocation, or line profit. Demand history is persisted in SQLite,
+samples. Schema version 2 also records engine-observed `lineStop0` → `lineStop1`
+journey counts, allowing read-only detection of passenger/freight allocation
+imbalance between genuinely parallel OD services. The detector only emits an
+AI timetable suggestion: it never moves demand or changes fleets, consists,
+headways, dwell policies, stops, or cargo filters. Demand history is persisted in SQLite,
 and fleet proposals enforce exact existing-consist cloning, speed-class
 consistency, and cargo capability constraints.
+
+SQLite runtime data is scoped by a derived `save_id`. The fingerprint uses
+stable player/town entity identity rather than mutable lines or vehicles.
+Demand samples, station events, timetable plans, and MCP work-log queries are
+filtered by that scope. Rows created before this migration remain preserved as
+`legacy-unscoped` and are never silently attributed to the currently loaded
+save. Branches copied from the same underlying world may intentionally share a
+fingerprint until TPF2 exposes an engine-native save UUID.
+
+The local rail-map service polls the current world fingerprint every three
+seconds. On a save switch it clears the old dynamic vehicle/signal layers,
+requests a fresh physical rail network through the read-only Bridge, regenerates
+the tiled map, and publishes the new `save_id`. The browser reloads only after
+the replacement manifest is ready, so future save changes do not require a game
+restart or a rail-map server restart.
 
 All game mutations exposed by MCP now require `create_task` → `plan_task` →
 `approve_task_step` → `continue_task`. The former direct

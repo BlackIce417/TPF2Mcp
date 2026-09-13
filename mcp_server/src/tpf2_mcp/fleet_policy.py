@@ -21,14 +21,26 @@ def evaluate_fleet_adjustment(line_plan: dict[str, Any], demand_samples: list[di
     values = [metrics(sample) for sample in usable]
     add_window = values[-3:]
     add_ready = len(add_window) == 3 and all(load >= .9 or (waiting >= total_capacity * .5 and isinstance(wait, (int, float)) and wait >= line_plan["headway_seconds"]) for load, waiting, wait in add_window)
+    waiting_recovering = (
+        len(add_window) == 3
+        and add_window[0][1] > add_window[1][1] > add_window[2][1]
+        and add_window[2][1] <= add_window[0][1] * .75
+        and add_window[2][0] < .9
+    )
+    if waiting_recovering:
+        add_ready = False
     remove_window = values[-6:]
     remove_ready = len(remove_window) == 6 and line_plan.get("vehicle_count", 0) > 1 and all(load <= .35 and waiting <= total_capacity * .1 for load, waiting, _ in remove_window)
     decision = "ADD_ONE_PROPOSAL" if add_ready else "REMOVE_ONE_PROPOSAL" if remove_ready else "HOLD_FLEET"
+    hold_reason = "WAITING_BACKLOG_RECOVERING" if waiting_recovering else None
     return {
         **base, "decision": decision,
         "latest": {"load_factor": round(values[-1][0], 3), "waiting": values[-1][1], "average_waiting_seconds": values[-1][2]},
+        "hold_reason": hold_reason,
         "thresholds": {"add_consecutive_samples": 3, "add_load_factor": .9, "add_waiting_capacity_ratio": .5,
-                       "add_wait_at_least_headway": True, "remove_consecutive_samples": 6,
+                       "add_wait_at_least_headway": True, "recovery_window_samples": 3,
+                       "recovery_waiting_drop_ratio": .25, "recovery_max_load_factor": .9,
+                       "remove_consecutive_samples": 6,
                        "remove_load_factor": .35, "remove_waiting_capacity_ratio": .1, "minimum_vehicles": 1},
         "safety": "proposal only; track/platform capacity and purchase/depot feasibility must pass before execution",
     }

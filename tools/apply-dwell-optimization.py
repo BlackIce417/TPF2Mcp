@@ -11,9 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "mcp_server" / "src"))
 
 from tpf2_mcp.bridge import BridgeClient  # noqa: E402
+from tpf2_mcp.config import state_dir  # noqa: E402
 from tpf2_mcp.operations import OperationController  # noqa: E402
 from tpf2_mcp.snapshot import SnapshotIndex  # noqa: E402
 from tpf2_mcp.tasks.orchestrator import TaskOrchestrator  # noqa: E402
+from tpf2_mcp.work_log import McpWorkLogStore  # noqa: E402
 
 
 def write(path: Path, value: object) -> None:
@@ -90,6 +92,20 @@ def main() -> int:
         if task.get("status") != "COMPLETED":
             break
     success = len(results) == len(ready) and all(item.get("status") == "COMPLETED" for item in results)
+    if success:
+        work_log = McpWorkLogStore(state_dir() / "mcp-work-log.sqlite3")
+        for recommendation, task in zip(ready, results):
+            work_log.record_verified_action(
+                task["save_id"],
+                f"task:{task['task_id']}:dwell",
+                "SET_LINE_STOP_POLICY",
+                f"调整停站上限 · {recommendation.get('line_name') or recommendation['line_id']} · "
+                f"{recommendation.get('station_name') or ('停站 ' + str(recommendation['stop_index']))} · "
+                f"{recommendation['current_policy'].get('max_waiting_time')}→"
+                f"{recommendation['recommended_policy'].get('max_waiting_time')} 秒",
+                line_id=recommendation["line_id"],
+                details={"recommendation": recommendation, "task_id": task["task_id"]},
+            )
     rollback["status"] = "AVAILABLE" if success else "REVIEW_REQUIRED"
     write(args.evidence_directory / "rollback-plan.json", rollback)
     result = {"status": "POSTCONDITION_VERIFIED" if success else "FAILED", "operation_count": len(results), "tasks": results}

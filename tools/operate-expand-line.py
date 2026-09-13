@@ -7,8 +7,11 @@ from pathlib import Path
 
 from tpf2_mcp.bridge import BridgeClient
 from tpf2_mcp.operations import OperationController
+from tpf2_mcp.config import state_dir
+from tpf2_mcp.save_scope import snapshot_save_id
 from tpf2_mcp.snapshot import SnapshotIndex
 from tpf2_mcp.tasks import TaskOrchestrator
+from tpf2_mcp.work_log import McpWorkLogStore
 
 
 def save(path: Path, value: object) -> None:
@@ -22,6 +25,10 @@ def main() -> int:
     parser.add_argument("--source-vehicle-id", type=int, required=True)
     parser.add_argument("--depot-id", type=int, required=True)
     parser.add_argument("--evidence-directory", type=Path, required=True)
+    parser.add_argument(
+        "--allow-observed-rail-depot", action="store_true",
+        help="Allow a current engine-observed rail depot when the template vehicle's recorded depot is stale.",
+    )
     args = parser.parse_args()
 
     bridge = BridgeClient(timeout_seconds=20)
@@ -37,8 +44,19 @@ def main() -> int:
     if before_line is None:
         raise SystemExit(f"line {args.line_id} not found")
     source = current.vehicle_by_id.get(args.source_vehicle_id)
-    if source is None or source.get("line_id") != args.line_id or source.get("raw_depot") != args.depot_id:
-        raise SystemExit("source vehicle/depot evidence no longer matches the target line")
+    if source is None or source.get("line_id") != args.line_id:
+        raise SystemExit("source vehicle evidence no longer matches the target line")
+    if source.get("raw_depot") != args.depot_id:
+        rail_network_path = bridge.directory / "rail-network.json"
+        try:
+            rail_network = json.loads(rail_network_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            rail_network = {}
+        observed_depot = next(
+            (item for item in rail_network.get("depots", []) if item.get("entity_id") == args.depot_id), None,
+        )
+        if not args.allow_observed_rail_depot or not observed_depot or observed_depot.get("rail_candidate") is not True:
+            raise SystemExit("source vehicle/depot evidence no longer matches the target line")
 
     operations = OperationController(snapshot, lambda envelope: bridge.call("execute_operation", envelope))
     tasks = TaskOrchestrator(snapshot, operations)
@@ -65,6 +83,12 @@ def main() -> int:
         "steps": task.get("steps", []),
         "result": task.get("result"),
     }
+    if task["status"] == "COMPLETED":
+        McpWorkLogStore(state_dir() / "mcp-work-log.sqlite3").record_verified_action(
+            snapshot_save_id(current.state), f"expand-line:{task.get('task_id')}", "EXPAND_LINE_WITH_VEHICLE",
+            f"加车并验证 · {before_line.get('name') or ('线路 ' + str(args.line_id))} · 车辆数 {before_line['network']['vehicle_count']}→{after_line['network']['vehicle_count']}",
+            line_id=args.line_id, vehicle_id=task.get("goal", {}).get("created_vehicle_id"), details=result,
+        )
     save(args.evidence_directory / "result.json", result)
     print(json.dumps({
         "status": result["status"],

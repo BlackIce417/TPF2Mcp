@@ -1,0 +1,776 @@
+:root {
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    color: #dce7f5;
+    background: #050a11
+}
+
+* {
+    box-sizing: border-box
+}
+
+body {
+    margin: 0;
+    min-width: 1180px;
+    min-height: 100vh;
+    background: #050a11;
+    overflow: hidden
+}
+
+header {
+    height: 58px;
+    background: linear-gradient(#1a2a3c, #101a27);
+    border-bottom: 1px solid #3c5168;
+    display: flex;
+    align-items: center;
+    padding: 0 18px;
+    gap: 18px;
+    box-shadow: 0 2px 12px #0009
+}
+
+.brand {
+    font-weight: 800;
+    font-size: 17px;
+    letter-spacing: 1px;
+    color: #f0f6ff
+}
+
+.brand b {
+    color: #38d6ff
+}
+
+.sep {
+    height: 28px;
+    width: 1px;
+    background: #3d536b
+}
+
+.station {
+    font-size: 19px;
+    font-weight: 700
+}
+
+.meta {
+    font: 12px Consolas;
+    color: #8095aa
+}
+
+.spacer {
+    flex: 1
+}
+
+.mode {
+    padding: 7px 12px;
+    border: 1px solid #2e87a5;
+    background: #092e3b;
+    color: #54e4ff;
+    border-radius: 2px;
+    font: 12px Consolas
+}
+
+.clock {
+    font: 20px Consolas;
+    color: #9af7bf
+}
+
+.workspace {
+    display: grid;
+    grid-template-columns: 64px 1fr 310px;
+    height: calc(100vh - 94px)
+}
+
+nav {
+    background: #0c141f;
+    border-right: 1px solid #26384a;
+    padding: 10px 7px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px
+}
+
+nav button {
+    height: 50px;
+    background: #121f2d;
+    border: 1px solid #2d4156;
+    color: #92a6bb;
+    border-radius: 3px;
+    font-size: 10px;
+    cursor: default
+}
+
+nav button.active {
+    border-color: #32bce1;
+    color: #4bdcff;
+    background: #0d2b38
+}
+
+#board-wrap {
+    position: relative;
+    background-color: #070c12;
+    overflow: hidden;
+    overscroll-behavior: none
+}
+
+#rail-webgl {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0
+}
+
+#board {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-user-drag: none
+}
+
+#board * {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-user-drag: none
+}
+
+#board.dragging {
+    cursor: grabbing
+}
+
+.watermark {
+    position: absolute;
+    right: 18px;
+    top: 14px;
+    color: #557084;
+    font: 11px Consolas;
+    letter-spacing: .6px
+}
+
+.map-controls {
+    position: absolute;
+    left: 16px;
+    top: 14px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px;
+    background: #09131ee6;
+    border: 1px solid #31495e;
+    border-radius: 3px;
+    box-shadow: 0 3px 12px #0008;
+    z-index: 2
+}
+
+.map-controls button {
+    width: 30px;
+    height: 28px;
+    border: 1px solid #3a6178;
+    background: #102535;
+    color: #7ee6ff;
+    border-radius: 2px;
+    font: 16px Consolas;
+    cursor: pointer
+}
+
+.map-controls button:hover {
+    background: #17384c
+}
+
+.map-controls .reset,
+.map-controls .view {
+    width: auto;
+    padding: 0 9px;
+    font-size: 11px
+}
+
+.map-controls .view.selected {
+    background: #15506a;
+    color: #d7f8ff;
+    border-color: #43c8ef
+}
+
+.zoom-value {
+    min-width: 45px;
+    text-align: center;
+    color: #a9bdcf;
+    font: 11px Consolas
+}
+
+.track-tooltip {
+    position: absolute;
+    display: none;
+    pointer-events: none;
+    padding: 4px 7px;
+    border: 1px solid #55dfff;
+    background: #07131ee8;
+    color: #eaf9ff;
+    border-radius: 2px;
+    font: 11px Consolas;
+    box-shadow: 0 2px 8px #000b;
+    z-index: 5
+}
+
+.map-notice {
+    position: absolute;
+    left: 50%;
+    top: 72px;
+    z-index: 8;
+    transform: translate(-50%, -8px);
+    padding: 9px 16px;
+    border: 1px solid #e4ad45;
+    border-radius: 3px;
+    background: #251b0def;
+    color: #ffd47a;
+    font: 12px "Microsoft YaHei";
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .15s ease, transform .15s ease
+}
+
+.map-notice.visible {
+    opacity: 1;
+    transform: translate(-50%, 0)
+}
+
+.line-row {
+    display: grid;
+    grid-template-columns: 12px 1fr auto;
+    gap: 5px;
+    cursor: pointer
+}
+
+.line-row i {
+    width: 8px;
+    height: 8px;
+    margin-top: 3px;
+    border-radius: 50%
+}
+
+.line-row span {
+    color: #758da2
+}
+
+.line-list {
+    max-height: 390px;
+    overflow: auto
+}
+
+.route-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 5px;
+    cursor: default
+}
+
+aside {
+    background: #0c141e;
+    border-left: 1px solid #2c4053;
+    overflow: auto
+}
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    background: #142232;
+    border-bottom: 1px solid #30455a
+}
+
+.sidebar-header>.panel-title {
+    flex: 1;
+    border-bottom: 0
+}
+
+.sidebar-header>.detail-back {
+    flex: none;
+    margin-right: 12px
+}
+
+.panel-title {
+    height: 38px;
+    padding: 10px 13px;
+    background: #142232;
+    border-bottom: 1px solid #30455a;
+    font-size: 12px;
+    font-weight: 700;
+    color: #68dfff
+}
+
+.section {
+    padding: 12px;
+    border-bottom: 1px solid #243547
+}
+
+.kv {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 7px;
+    font-size: 11px;
+    margin-bottom: 7px
+}
+
+.kv span {
+    color: #8093a7
+}
+
+.kv b {
+    font-family: Consolas;
+    color: #e1ebf5
+}
+
+.unknown {
+    color: #ffbd52 !important
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10px
+}
+
+th,
+td {
+    padding: 7px 4px;
+    border-bottom: 1px solid #233446;
+    text-align: left
+}
+
+th {
+    color: #71869b
+}
+
+td {
+    color: #c7d3df
+}
+
+.line-chip {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-right: 5px
+}
+
+.event {
+    padding: 7px 0;
+    border-bottom: 1px dashed #27394b;
+    font: 10px/1.4 Consolas;
+    color: #9aabbc
+}
+
+.event em {
+    font-style: normal;
+    color: #50dfa1
+}
+
+.event.warn em {
+    color: #ffbd52
+}
+
+footer {
+    height: 36px;
+    background: #111b28;
+    border-top: 1px solid #304459;
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    gap: 22px;
+    font: 10px Consolas;
+    color: #91a3b5
+}
+
+#toggle-signals {
+    height: 24px;
+    padding: 0 9px;
+    border: 1px solid #3a6178;
+    border-radius: 2px;
+    background: #102535;
+    color: #7ee6ff;
+    font: 10px Consolas, "Microsoft YaHei";
+    cursor: pointer
+}
+
+#toggle-signals:hover {
+    background: #17384c
+}
+
+.lamp {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 6px
+}
+
+.green {
+    background: #23e58b;
+    box-shadow: 0 0 7px #23e58b
+}
+
+.red {
+    background: #ff4d5e;
+    box-shadow: 0 0 7px #ff4d5e
+}
+
+.amber {
+    background: #ffc64f;
+    box-shadow: 0 0 7px #ffc64f
+}
+
+.map-controls button:disabled {
+    opacity: .35;
+    cursor: not-allowed;
+    background: #0b1822
+}
+
+.station-route {
+    padding: 8px 0;
+    border-bottom: 1px solid #233446;
+    font-size: 10px
+}
+
+.station-route div {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #dce7f5
+}
+
+.station-route span {
+    display: block;
+    margin: 4px 0 0 15px;
+    color: #8298ac;
+    line-height: 1.55;
+    white-space: pre-line
+}
+
+.station-log {
+    max-height: 280px;
+    overflow: auto
+}
+
+.ai-suggestions {
+    max-height: 310px;
+    overflow: auto
+}
+
+.mcp-log {
+    max-height: 145px;
+    overflow: auto;
+    padding-top: 6px;
+    padding-bottom: 6px
+}
+
+.suggestion {
+    padding: 8px 0;
+    border-bottom: 1px solid #233446;
+    font: 10px/1.45 Consolas
+}
+
+.suggestion b {
+    display: block;
+    color: #dce7f5;
+    margin-bottom: 3px
+}
+
+.suggestion span {
+    color: #8298ac
+}
+
+.suggestion-detail {
+    display: block;
+    white-space: pre-line
+}
+
+.suggestion em {
+    font-style: normal;
+    color: #ffbd52;
+    margin-right: 5px
+}
+
+.suggestion.action em {
+    color: #50dfa1
+}
+
+.work-entry {
+    padding: 6px 0;
+    border-bottom: 1px dashed #27394b;
+    font: 10px/1.4 Consolas;
+    color: #a7b8c8
+}
+
+.work-entry time {
+    display: block;
+    color: #607a91
+}
+
+.work-entry .applied {
+    color: #50dfa1
+}
+
+.work-entry .planned {
+    color: #ffbd52
+}
+
+.work-entry .blocked { color: #ff6774 }
+.work-entry .pending { color: #58d8f5 }
+.work-entry .cancelled { color: #9ba9b5 }
+
+.panel-title-action {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px
+}
+
+.work-log-all {
+    border: 1px solid #36566e;
+    background: #102535;
+    color: #68dfff;
+    border-radius: 2px;
+    padding: 3px 8px;
+    font: 10px "Microsoft YaHei";
+    cursor: pointer
+}
+
+.work-log-all:hover,
+.work-log-filters button:hover,
+.work-log-filters button.active {
+    background: #1b4054;
+    color: #baf5ff
+}
+
+.work-log-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: grid;
+    place-items: center
+}
+
+.work-log-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background: rgba(2, 7, 12, .82);
+    cursor: default
+}
+
+.work-log-dialog {
+    position: relative;
+    width: min(920px, calc(100vw - 80px));
+    height: min(720px, calc(100vh - 80px));
+    display: grid;
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    border: 1px solid #39546b;
+    border-radius: 4px;
+    background: #0b141e;
+    box-shadow: 0 20px 70px rgba(0, 0, 0, .7);
+    color: #dce7f5
+}
+
+.work-log-dialog-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid #2a3d50
+}
+
+.work-log-dialog-header h2 {
+    margin: 0 0 5px;
+    color: #8cecff;
+    font: 16px "Microsoft YaHei"
+}
+
+.work-log-dialog-header p {
+    margin: 0;
+    color: #7890a4;
+    font: 11px "Microsoft YaHei"
+}
+
+.work-log-close {
+    width: 30px;
+    height: 30px;
+    border: 1px solid #3a566d;
+    border-radius: 2px;
+    background: #101e2a;
+    color: #a8c7d8;
+    font: 20px/1 Consolas;
+    cursor: pointer
+}
+
+.work-log-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 20px
+}
+
+.work-log-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px
+}
+
+.work-log-filters button {
+    border: 1px solid #304c62;
+    border-radius: 2px;
+    padding: 5px 9px;
+    background: #101f2c;
+    color: #8fa9bc;
+    font: 10px "Microsoft YaHei";
+    cursor: pointer
+}
+
+.work-log-toolbar input {
+    min-width: 220px;
+    border: 1px solid #304c62;
+    border-radius: 2px;
+    padding: 6px 9px;
+    outline: none;
+    background: #071018;
+    color: #dce7f5;
+    font: 11px "Microsoft YaHei"
+}
+
+.work-log-toolbar input:focus {
+    border-color: #58cde9
+}
+
+.work-log-result-summary {
+    padding: 0 20px 9px;
+    color: #70889d;
+    font: 10px Consolas
+}
+
+.work-log-modal-list {
+    min-height: 0;
+    overflow: auto;
+    padding: 0 20px 18px
+}
+
+.work-log-detail-row {
+    padding: 12px 2px;
+    border-top: 1px solid #213345
+}
+
+.work-log-detail-head,
+.work-log-detail-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #71899e;
+    font: 10px Consolas
+}
+
+.work-log-detail-head span {
+    border: 1px solid currentColor;
+    border-radius: 2px;
+    padding: 2px 6px
+}
+
+.work-log-detail-head .status-executed { color: #50dfa1 }
+.work-log-detail-head .status-blocked { color: #ff6774 }
+.work-log-detail-head .status-pending { color: #58d8f5 }
+.work-log-detail-head .status-cancelled { color: #9ba9b5 }
+.work-log-detail-head .status-test { color: #ffbd52 }
+
+.work-log-detail-row h3 {
+    margin: 7px 0 6px;
+    color: #dce7f5;
+    font: 600 12px/1.45 "Microsoft YaHei"
+}
+
+.work-log-detail-meta code {
+    color: #75d9ed
+}
+
+.work-log-detail-row p {
+    margin: 6px 0 0;
+    color: #93a6b7;
+    font: 10px/1.5 "Microsoft YaHei";
+    overflow-wrap: anywhere
+}
+
+.detail-back {
+    border: 1px solid #3a6178;
+    background: #102535;
+    color: #7ee6ff;
+    border-radius: 2px;
+    padding: 5px 10px;
+    font: 11px "Microsoft YaHei";
+    cursor: pointer
+}
+
+.detail-back:hover {
+    background: #17384c
+}
+
+.vehicle-load {
+    font: 11px/1.6 Consolas;
+    color: #c7d3df
+}
+
+.vehicle-load b {
+    color: #ffdb78
+}
+
+.suggestion time {
+    display: block;
+    color: #607a91;
+    margin-bottom: 3px
+}
+
+.advice-more {
+    display: block;
+    width: 100%;
+    margin: 8px 0 1px;
+    padding: 7px;
+    border: 1px solid #36566e;
+    background: #102535;
+    color: #68dfff;
+    border-radius: 2px;
+    font: 11px "Microsoft YaHei";
+    cursor: pointer
+}
+
+.detail-back.is-hidden {
+    display: none
+}
+
+.vehicle-row {
+    width: 100%;
+    grid-template-columns: 1fr auto;
+    border: 0;
+    border-bottom: 1px dashed #27394b;
+    background: transparent;
+    text-align: left
+}
+
+.legend-track { color: #83a9bd !important }
+.legend-platform { color: #c4c9cc !important }
+.legend-bridge { color: #dce7ef !important }
+.legend-switch { color: #ffd35a !important }
+
+.advice-more:hover {
+    background: #17384c
+}
+
+aside,
+aside * {
+    user-select: text;
+    -webkit-user-select: text
+}
+
+aside {
+    cursor: text
+}
+
+aside * {
+    -webkit-user-drag: auto
+}

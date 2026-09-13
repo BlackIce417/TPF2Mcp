@@ -30,6 +30,7 @@ def main() -> None:
     parser.add_argument("--duration-seconds", type=float, default=90)
     parser.add_argument("--interval-seconds", type=float, default=1.5)
     parser.add_argument("--output-directory", type=Path, default=ROOT / "diagnostics" / "rail-operations")
+    parser.add_argument("--quiet", action="store_true", help="Suppress per-frame progress while retaining the final summary.")
     args = parser.parse_args()
     bridge = Path(os.environ["APPDATA"]) / "Transport Fever 2" / "tpf2_mcp_bridge"
     frames, last_sample = [], None
@@ -45,7 +46,8 @@ def main() -> None:
         if sample != last_sample:
             frames.append(frame)
             last_sample = sample
-            print(f"frame={len(frames)} sampled_at={sample} vehicles={len(frame.get('vehicles', []))}", flush=True)
+            if not args.quiet:
+                print(f"frame={len(frames)} sampled_at={sample} vehicles={len(frame.get('vehicles', []))}", flush=True)
         if time.monotonic() >= deadline:
             break
         time.sleep(max(.2, args.interval_seconds))

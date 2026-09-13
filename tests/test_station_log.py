@@ -28,9 +28,9 @@ class StationEventStoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store = StationEventStore(Path(directory) / "events.sqlite3")
             frame, manifest = self.fixture()
-            self.assertEqual(store.record_frame(frame, manifest, observed_at=100), 2)
-            self.assertEqual(store.record_frame(frame, manifest, observed_at=101), 0)
-            events = store.query(10)
+            self.assertEqual(store.record_frame(frame, manifest, "save-a", observed_at=100), 2)
+            self.assertEqual(store.record_frame(frame, manifest, "save-a", observed_at=101), 0)
+            events = store.query(10, "save-a")
             self.assertEqual([item["event_type"] for item in events], ["PASS", "STOP"])
             self.assertTrue(all(item["observed_at"] == 100 for item in events))
 
@@ -38,10 +38,10 @@ class StationEventStoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store = StationEventStore(Path(directory) / "events.sqlite3")
             frame, manifest = self.fixture()
-            store.record_frame(frame, manifest, observed_at=100)
-            store.record_frame({"vehicles": []}, manifest, observed_at=101)
-            store.record_frame(frame, manifest, observed_at=102)
-            self.assertEqual(len(store.query(10)), 4)
+            store.record_frame(frame, manifest, "save-a", observed_at=100)
+            store.record_frame({"vehicles": []}, manifest, "save-a", observed_at=101)
+            store.record_frame(frame, manifest, "save-a", observed_at=102)
+            self.assertEqual(len(store.query(10, "save-a")), 4)
 
     def test_adjacent_mainline_inside_large_bounds_is_not_a_station_pass(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -50,5 +50,14 @@ class StationEventStoreTests(unittest.TestCase):
             frame["vehicles"] = [{"entity_id": 2, "name": "列车2", "line_id": 92,
                                   "stop_index": 0, "raw_state": 1, "speed_kmh": 80,
                                   "edge_id": 999, "position": {"x": 1, "y": 1}}]
-            self.assertEqual(store.record_frame(frame, manifest, observed_at=100), 0)
-            self.assertEqual(store.query(10), [])
+            self.assertEqual(store.record_frame(frame, manifest, "save-a", observed_at=100), 0)
+            self.assertEqual(store.query(10, "save-a"), [])
+
+    def test_same_station_and_vehicle_ids_are_isolated_by_save(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = StationEventStore(Path(directory) / "events.sqlite3")
+            frame, manifest = self.fixture()
+            self.assertEqual(store.record_frame(frame, manifest, "save-a", observed_at=100), 2)
+            self.assertEqual(store.record_frame(frame, manifest, "save-b", observed_at=101), 2)
+            self.assertEqual(2, len(store.query(10, "save-a")))
+            self.assertEqual(2, len(store.query(10, "save-b")))

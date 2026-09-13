@@ -1,4 +1,5 @@
 import importlib.util
+import math
 import unittest
 from pathlib import Path
 
@@ -36,6 +37,27 @@ class RailNetworkMapTests(unittest.TestCase):
         self.assertEqual({"x": 40.0, "y": 0.0, "z": 0.0}, depot["track_connection_position"])
         self.assertEqual(2, depot["assigned_vehicle_count"])
         self.assertEqual(1, depot["parked_vehicle_count"])
+
+    def test_depot_stub_inside_bounds_wins_over_closer_service_mainline(self):
+        source = {"depots": [{
+            "entity_id": 50, "name": "Hankou depot", "center": {"x": 0, "y": 0, "z": 0},
+            "bounds": {"min": {"x": -5, "y": 8}, "max": {"x": 5, "y": 15}},
+            "rail_candidate": True, "assigned_vehicle_ids": [], "rail_assigned_vehicle_ids": [],
+        }]}
+        nodes = {
+            1: {"x": -50, "y": 5, "z": 0}, 2: {"x": 50, "y": 5, "z": 0},
+            3: {"x": 0, "y": 10, "z": 0}, 4: {"x": 50, "y": 30, "z": 0},
+        }
+        edges = {
+            10: {"entity_id": 10, "node0": 1, "node1": 2},
+            11: {"entity_id": 11, "node0": 3, "node1": 4},
+        }
+
+        depot = MODULE.prepare_rail_depots(source, nodes, edges, {10})[0]
+
+        self.assertEqual(11, depot["nearest_edge_id"])
+        self.assertEqual({"x": 0, "y": 10, "z": 0}, depot["track_connection_position"])
+        self.assertEqual("DEPOT_BOUNDS_UNUSED_TRACK_ENDPOINT_DERIVED", depot["track_connection_source"])
 
     def test_routes_line_over_observed_physical_edges(self):
         source = {
@@ -124,6 +146,9 @@ class RailNetworkMapTests(unittest.TestCase):
             "stations": [],
             "lines": [{"entity_id": 30, "route_edge_ids": [10, 11], "overview_segments": [[[0, 0], [4000, 0]]]}],
             "counts": {"nodes": 4, "edges": 2, "stations": 0, "lines": 1},
+            "grade_separated_crossings": [{
+                "position": {"x": 100, "y": 100}, "upper_edge_id": 10, "lower_edge_id": 11,
+            }],
             "routing": {}, "limitations": [],
         }
 
@@ -133,6 +158,8 @@ class RailNetworkMapTests(unittest.TestCase):
         self.assertNotIn("route_edge_ids", manifest["lines"][0])
         self.assertNotIn("nodes", manifest)
         self.assertEqual(2, len(manifest["tiles"]))
+        self.assertEqual(1, manifest["tiles"][0]["bridge_crossing_count"])
+        self.assertEqual(1, len(tiles["0_0"]["grade_separated_crossings"]))
 
     def test_platform_chain_stops_before_switch_throat(self):
         edges = {
@@ -295,6 +322,51 @@ class RailNetworkMapTests(unittest.TestCase):
 
         self.assertEqual(("UNKNOWN", "UNKNOWN"), MODULE.classify_terminal_station_model([], 9, 273.0))
 
+    def test_fixed_custom_station_uses_nominal_length_not_model_bounds_or_raw_track_span(self):
+        nodes = [
+            {"entity_id": 1, "position": {"x": -118, "y": 0, "z": 0}},
+            {"entity_id": 2, "position": {"x": -108, "y": 0, "z": 0}},
+            {"entity_id": 3, "position": {"x": 0, "y": 0, "z": 0}},
+            {"entity_id": 4, "position": {"x": 108, "y": 0, "z": 0}},
+            {"entity_id": 5, "position": {"x": 118, "y": 0, "z": 0}},
+            {"entity_id": 6, "position": {"x": -118, "y": 10, "z": 0}},
+            {"entity_id": 7, "position": {"x": 118, "y": 10, "z": 0}},
+            {"entity_id": 8, "position": {"x": -118, "y": -10, "z": 0}},
+            {"entity_id": 9, "position": {"x": 118, "y": -10, "z": 0}},
+        ]
+        edges = [
+            {"entity_id": 10, "node0": 1, "node1": 2, "track_type": 1},
+            {"entity_id": 11, "node0": 1, "node1": 6, "track_type": 1},
+            {"entity_id": 12, "node0": 2, "node1": 3, "track_type": 1},
+            {"entity_id": 13, "node0": 3, "node1": 4, "track_type": 1},
+            {"entity_id": 14, "node0": 4, "node1": 5, "track_type": 1},
+            {"entity_id": 15, "node0": 5, "node1": 7, "track_type": 1},
+            {"entity_id": 16, "node0": 1, "node1": 8, "track_type": 1},
+            {"entity_id": 17, "node0": 5, "node1": 9, "track_type": 1},
+        ]
+        source = {
+            "status": "OK", "source_status": "ENGINE_OBSERVED", "nodes": nodes, "edges": edges,
+            "stations": [{
+                "entity_id": 20, "name": "Fixed custom", "center": {"x": 0, "y": 0, "z": 0},
+                "bounds": {"min": {"x": -15, "y": -10}, "max": {"x": 15, "y": 10}},
+                "construction_files": ["station/rail/hhz.con"],
+                "terminals": [{
+                    "node_id": 3, "position": {"x": 0, "y": 0, "z": 0},
+                    "station_index": 0, "terminal_index": 0,
+                    "construction_file": "station/rail/hhz.con",
+                }],
+            }],
+            "lines": [], "depots": [],
+            "counts": {"nodes": len(nodes), "edges": len(edges), "stations": 1, "lines": 0, "depots": 0},
+        }
+
+        terminal = MODULE.prepare(source)["stations"][0]["terminals"][0]
+
+        self.assertEqual(220.0, terminal["platform_length_m"])
+        self.assertEqual(216.0, terminal["platform_track_span_m"])
+        self.assertEqual("CONSTRUCTION_RESOURCE_NOMINAL_LENGTH", terminal["platform_length_source"])
+        self.assertEqual([12, 13], terminal["platform_edge_ids"])
+
     def test_station_model_ground_truth_is_separate_from_engine_evidence(self):
         result = {"stations": [
             {"entity_id": 1, "center": {"x": 0, "y": 5}, "station_model": "UNKNOWN", "station_model_source": "UNKNOWN",
@@ -350,17 +422,42 @@ class RailNetworkMapTests(unittest.TestCase):
         self.assertTrue(all(terminal["platform_length_source"] == "MODULAR_STATION_SHARED_SPAN_DERIVED"
                             for terminal in station["terminals"]))
 
-    def test_modular_platforms_from_separate_station_groups_can_share_span(self):
-        passenger = {"platform_centerline": [[0, 0], [0, 80]], "platform_length_m": 80,
+    def test_modular_passenger_and_cargo_platforms_keep_independent_spans(self):
+        passenger = {"cargo": False, "platform_centerline": [[0, 0], [0, 80]], "platform_length_m": 80,
                      "platform_length_source": "TERMINAL_TRACK_CLIPPED_TO_STATION_BOUNDS"}
-        cargo = {"platform_centerline": [[10, -10], [10, 90]], "platform_length_m": 100,
+        cargo = {"cargo": True, "platform_centerline": [[10, -10], [10, 90]], "platform_length_m": 100,
                  "platform_length_source": "TERMINAL_CURVE_TO_PRE_SWITCH_NODES"}
 
         MODULE.normalize_modular_station_platform_spans({"terminals": [passenger, cargo]})
 
-        self.assertEqual([100, 100], [passenger["platform_length_m"], cargo["platform_length_m"]])
-        self.assertAlmostEqual(-10, passenger["platform_centerline"][0][1])
-        self.assertAlmostEqual(90, passenger["platform_centerline"][-1][1])
+        self.assertEqual([80, 100], [passenger["platform_length_m"], cargo["platform_length_m"]])
+        self.assertEqual([[0, 0], [0, 80]], passenger["platform_centerline"])
+        self.assertEqual([[10, -10], [10, 90]], cargo["platform_centerline"])
+
+    def test_standard_modular_platform_length_uses_40_metre_modules(self):
+        passenger = {
+            "cargo": False, "platform_centerline": [[0, 0], [0, 318]],
+            "platform_length_m": 318, "platform_length_source": "FIXED_CONSTRUCTION_TERMINAL_TRACK_CURVE",
+        }
+        cargo = {
+            "cargo": True, "platform_centerline": [[10, 0], [10, 438]],
+            "platform_length_m": 438, "platform_length_source": "FIXED_CONSTRUCTION_TERMINAL_TRACK_CURVE",
+        }
+
+        MODULE.normalize_modular_station_platform_spans(
+            {"terminals": [passenger, cargo]}, module_length_m=40,
+        )
+
+        self.assertEqual(320, passenger["platform_length_m"])
+        self.assertEqual(8, passenger["platform_module_count"])
+        self.assertEqual(318, passenger["platform_track_span_m"])
+        self.assertEqual(440, cargo["platform_length_m"])
+        self.assertEqual(11, cargo["platform_module_count"])
+        self.assertEqual(438, cargo["platform_track_span_m"])
+        self.assertEqual("MODULAR_STATION_NOMINAL_MODULE_SPAN_DERIVED", passenger["platform_length_source"])
+        self.assertAlmostEqual(320, sum(
+            math.dist(a, b) for a, b in zip(passenger["platform_centerline"], passenger["platform_centerline"][1:])
+        ))
 
     def test_track_loading_terminal_is_not_rendered_as_a_side_platform(self):
         station = {"terminals": [{"platform_centerline": [[0, 0], [0, 10]]}]}
@@ -393,6 +490,45 @@ class RailNetworkMapTests(unittest.TestCase):
         self.assertEqual("STATION_CONSTRUCTION_FILE_ENGINE_OBSERVED", station["station_model_source"])
         self.assertFalse(station["station_model_ground_truth_match"])
         self.assertEqual([[7.5, 0.0], [7.5, 10.0]], terminal["platform_centerline"])
+
+    def test_hhz_uses_mod_nominal_220_m_instead_of_216_m_track_edge(self):
+        terminal = {
+            "position": {"x": 0, "y": 2.5},
+            "platform_centerline": [[-108, 2.5], [108, 2.5]],
+            "platform_length_m": 216.0,
+            "platform_length_source": "FIXED_CONSTRUCTION_TERMINAL_TRACK_CURVE",
+        }
+        station = {"construction_files": ["station/rail/hhz.con"], "terminals": [terminal]}
+
+        MODULE.normalize_fixed_construction_platform_lengths(station)
+
+        self.assertEqual(220.0, terminal["platform_length_m"])
+        self.assertEqual(216.0, terminal["platform_track_span_m"])
+        self.assertEqual("HHZ_MOD_EFFECTIVE_LENGTH", terminal["platform_length_evidence"])
+        self.assertEqual([[-110.0, 2.5], [110.0, 2.5]], terminal["platform_centerline"])
+
+    def test_known_fixed_prefabs_use_resource_nominal_lengths(self):
+        cases = [
+            ("station/rail/CRST_HM.con", 228.0, 450.0, "CRST_WA_450_RESOURCE"),
+            ("station/train/YXLL_Hankou_Railway_Station.con", 456.0, 450.0, "HANKOU_PLALEN_PARAMETER_GRID"),
+            ("station/train/YXLL_Wuhan_Railway_Station2.con", 484.0, 480.0, "WUHAN_FIXED_TRACK_SPAN"),
+        ]
+        for construction_file, observed, expected, evidence in cases:
+            with self.subTest(construction_file=construction_file):
+                terminal = {
+                    "position": {"x": 0, "y": 0},
+                    "platform_centerline": [[-observed / 2, 0], [observed / 2, 0]],
+                    "platform_length_m": observed,
+                    "platform_length_source": "FIXED_CONSTRUCTION_TERMINAL_TRACK_CURVE",
+                }
+                station = {"construction_files": [construction_file], "terminals": [terminal]}
+
+                MODULE.normalize_fixed_construction_platform_lengths(station)
+
+                self.assertEqual(expected, terminal["platform_length_m"])
+                self.assertEqual(evidence, terminal["platform_length_evidence"])
+                self.assertEqual("CONSTRUCTION_RESOURCE_NOMINAL_LENGTH", terminal["platform_length_source"])
+                self.assertAlmostEqual(expected, math.dist(*terminal["platform_centerline"]))
 
 
 if __name__ == "__main__":

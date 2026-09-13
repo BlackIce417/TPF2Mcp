@@ -8,12 +8,15 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
+from .save_scope import LEGACY_SAVE_ID
+
 
 class StationEventStore:
     def __init__(self, path: Path):
         self.path = Path(path)
         self._lock = threading.RLock()
         self._presence: dict[int, str] = {}
+        self._active_save_id: str | None = None
 
     def _connect(self) -> sqlite3.Connection:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -35,12 +38,25 @@ class StationEventStore:
                 vehicle_name TEXT NOT NULL
             )"""
         )
+        columns = {row["name"] for row in connection.execute("PRAGMA table_info(station_events)")}
+        if "save_id" not in columns:
+            connection.execute(
+                f"ALTER TABLE station_events ADD COLUMN save_id TEXT NOT NULL DEFAULT '{LEGACY_SAVE_ID}'"
+            )
         connection.execute(
             "CREATE INDEX IF NOT EXISTS station_events_station_time ON station_events(station_id, observed_at DESC)"
         )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS station_events_save_station_time ON station_events(save_id,station_id,observed_at DESC)"
+        )
         return connection
 
-    def record_frame(self, frame: dict[str, Any], manifest: dict[str, Any], observed_at: float | None = None) -> int:
+    def record_frame(self, frame: dict[str, Any], manifest: dict[str, Any], save_id: str, observed_at: float | None = None) -> int:
+        if not isinstance(save_id, str) or not save_id:
+            raise ValueError("station event frame requires save_id")
+        if self._active_save_id != save_id:
+            self._presence = {}
+            self._active_save_id = save_id
         lines = {line.get("entity_id"): line for line in manifest.get("lines", [])}
         stations = manifest.get("stations", [])
         station_by_id = {station.get("entity_id"): station for station in stations}
@@ -81,7 +97,7 @@ class StationEventStore:
             current[vehicle_id] = presence
             if self._presence.get(vehicle_id) == presence:
                 continue
-            pending.append((station_id, station.get("name") or f"车站 {station_id}", now,
+            pending.append((save_id, station_id, station.get("name") or f"车站 {station_id}", now,
                             int(game_time) if isinstance(game_time, (int, float)) else None, event_type,
                             vehicle.get("line_id"), line.get("name") or f"线路 {vehicle.get('line_id')}",
                             vehicle_id, vehicle.get("name") or f"列车{vehicle_id}"))
@@ -92,17 +108,17 @@ class StationEventStore:
             with connection:
                 connection.executemany(
                     """INSERT INTO station_events
-                       (station_id,station_name,observed_at,game_time_ms,event_type,line_id,line_name,vehicle_id,vehicle_name)
-                       VALUES (?,?,?,?,?,?,?,?,?)""", pending)
+                       (save_id,station_id,station_name,observed_at,game_time_ms,event_type,line_id,line_name,vehicle_id,vehicle_name)
+                       VALUES (?,?,?,?,?,?,?,?,?,?)""", pending)
         return len(pending)
 
-    def query(self, station_id: int, limit: int = 100) -> list[dict[str, Any]]:
+    def query(self, station_id: int, save_id: str, limit: int = 100) -> list[dict[str, Any]]:
         bounded = max(1, min(500, int(limit)))
         with self._lock, closing(self._connect()) as connection:
             rows = connection.execute(
-                    """SELECT id,station_id,station_name,observed_at,game_time_ms,event_type,
+                    """SELECT id,save_id,station_id,station_name,observed_at,game_time_ms,event_type,
                               line_id,line_name,vehicle_id,vehicle_name
-                       FROM station_events WHERE station_id=? ORDER BY observed_at DESC,id DESC LIMIT ?""",
-                    (station_id, bounded),
+                       FROM station_events WHERE save_id=? AND station_id=? ORDER BY observed_at DESC,id DESC LIMIT ?""",
+                    (save_id, station_id, bounded),
                 ).fetchall()
         return [dict(row) for row in rows]

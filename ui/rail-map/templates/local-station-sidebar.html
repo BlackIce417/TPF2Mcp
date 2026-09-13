@@ -1,0 +1,41 @@
+<template id="local-station-sidebar-template">
+    <div class="sidebar-view local-station-sidebar">
+        <div class="section">
+            <div class="kv"><span>车站</span><b data-field="station-name"></b></div>
+            <div class="kv"><span>停站线路</span><b data-field="serving-lines"></b></div>
+        </div>
+        <div class="panel-title">站台长度与原生节点</div>
+        <div class="section">
+            <table>
+                <thead><tr><th>站台</th><th>类型</th><th>长度</th><th>到发面</th><th>Node ID</th></tr></thead>
+                <tbody data-slot="platform-rows"></tbody>
+            </table>
+            <div class="event warn"><em>* CURVE</em> 无直接字段时累计 Terminal 至两端咽喉前的轨道曲线</div>
+        </div>
+        <div class="panel-title">图例</div>
+        <div class="section">
+            <div class="event"><em class="legend-track">━ TRACK</em> 游戏引擎物理轨道</div>
+            <div class="event"><em class="legend-platform">━ PLATFORM</em> 站台连续中心线</div>
+            <div class="event"><em class="legend-bridge">BRIDGE</em> 桥面遮断下层，纵边与 45° 斜翼标记上跨</div>
+            <div class="event"><em class="legend-switch">● SWITCH</em> 原生节点度数 ≥ 3</div>
+            <div class="event"><em>HOVER</em> 移动到站台显示站台号和长度</div>
+        </div>
+        <div class="panel-title">证据与限制</div>
+        <div class="section">
+            <div class="event"><em>ENGINE</em> 节点、边、切线、轨型和拓扑均来自当前存档 Bridge</div>
+            <div class="event"><em>CACHE</em> <span data-field="generated-at"></span></div>
+            <div class="event"><em>SAVE</em> <span data-field="save-id"></span></div>
+            <div class="event warn"><em>WINDOW</em> 站台、侧线和两端咽喉外扩 <span data-field="display-radius"></span> m</div>
+        </div>
+    </div>
+</template>
+
+<template id="local-platform-row-template">
+    <tr>
+        <td data-field="platform"></td>
+        <td data-field="service-class"></td>
+        <td data-field="length"></td>
+        <td data-field="terminal-faces"></td>
+        <td data-field="node-id"></td>
+    </tr>
+</template>

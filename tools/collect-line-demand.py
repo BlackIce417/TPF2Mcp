@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "mcp_server" / "src"))
 from tpf2_mcp.bridge import BridgeClient  # noqa: E402
 from tpf2_mcp.config import bridge_dir, state_dir  # noqa: E402
 from tpf2_mcp.demand_history import DemandHistoryStore  # noqa: E402
+from tpf2_mcp.save_scope import snapshot_save_id  # noqa: E402
 
 
 def main() -> int:
@@ -28,16 +29,18 @@ def main() -> int:
     if not line_ids:
         raise SystemExit("provide --line-id or --all-rail")
     client, store = BridgeClient(bridge_dir(), timeout_seconds=30), DemandHistoryStore(args.database)
+    snapshot = client.game_state(force_refresh=False)
+    save_id = snapshot_save_id(snapshot)
     collected, failures = [], []
     for line_id in line_ids:
         try:
             sample = client.line_demand(line_id, args.maximum_entities)
-            store.record(sample)
+            store.record(sample, save_id)
             collected.append({"line_id": line_id, "passengers": sample.get("passengers", {}).get("total_for_line"),
                               "cargo": sample.get("cargo", {}).get("total_for_line")})
         except Exception as exc:
             failures.append({"line_id": line_id, "error": str(exc)})
-    print(json.dumps({"database": str(args.database), "collected": collected, "failures": failures}, ensure_ascii=False))
+    print(json.dumps({"database": str(args.database), "save_id": save_id, "collected": collected, "failures": failures}, ensure_ascii=False))
     return 1 if failures else 0
 
 

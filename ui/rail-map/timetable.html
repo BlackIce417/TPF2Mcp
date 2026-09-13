@@ -1,5 +1,50 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TPF2 线路运行图</title>
-<style>
-.list,.list *{user-select:text;-webkit-user-select:text}.list *{-webkit-user-drag:auto}.chart,.chart *{user-select:none;-webkit-user-select:none;-webkit-user-drag:none}
-:root{font-family:"Segoe UI","Microsoft YaHei",sans-serif;color:#dce7f5;background:#050a11}*{box-sizing:border-box}body{margin:0;min-width:1100px;background:#050a11;overflow:hidden}header{height:58px;background:linear-gradient(#1a2a3c,#101a27);border-bottom:1px solid #3c5168;display:flex;align-items:center;padding:0 18px;gap:18px}.brand{font-weight:800;font-size:17px}.brand b{color:#38d6ff}.title{font-size:19px;font-weight:700}.spacer{flex:1}.mode{padding:7px 12px;border:1px solid #2e87a5;background:#092e3b;color:#54e4ff;font:12px Consolas}.workspace{display:grid;grid-template-columns:64px 290px minmax(0,1fr);height:calc(100vh - 94px)}nav{background:#0c141f;border-right:1px solid #26384a;padding:10px 7px;display:flex;flex-direction:column;gap:7px}nav button{height:50px;background:#121f2d;border:1px solid #2d4156;color:#92a6bb;border-radius:3px;font-size:10px;cursor:pointer}nav button.active{border-color:#32bce1;color:#4bdcff;background:#0d2b38}.list{background:#0c141e;border-right:1px solid #2c4053;overflow:hidden;display:flex;flex-direction:column}.panel{padding:10px 12px;border-bottom:1px solid #26394c;flex:0 0 auto}.panel h3{font-size:12px;color:#68dfff;margin:0 0 9px}.detail-panel{background:#0a1722}.info{font:11px/1.55 Consolas;color:#c8d7e6;overflow-wrap:anywhere}.line-list{flex:1 1 auto;min-height:0;overflow:auto}.line{padding:8px;border-bottom:1px solid #203243;cursor:pointer;font:11px Consolas}.line:hover,.line.active{background:#173144;color:#73e7ff}.line small{display:block;color:#7890a4;margin-top:4px}.chart{position:relative;overflow:hidden;background-color:#070c12;background-image:linear-gradient(#101923 1px,transparent 1px),linear-gradient(90deg,#101923 1px,transparent 1px);background-size:20px 20px}svg{width:100%;height:100%}.warn{color:#ffbd52}.ok{color:#50dfa1}footer{height:36px;background:#111b28;border-top:1px solid #304459;padding:10px 14px;font:10px Consolas;color:#91a3b5}
-</style></head><body><header><div class="brand"><b>TPF2</b> // CTC DISPATCH</div><div class="title">线路循环运行图</div><div class="spacer"></div><div class="mode">SHADOW PLAN · 禁止自动执行</div></header><div class="workspace"><nav><button onclick="location.href='/?view=network'">站场图</button><button class="active">运行图</button><button>线路</button><button>车辆</button><button>告警</button><button>设置</button></nav><section class="list"><div class="panel"><h3>线路模板</h3><div id="summary">载入中…</div></div><div class="panel detail-panel"><h3>当前线路</h3><div class="info" id="info">请选择线路</div></div><div class="line-list" id="lines"></div></section><main class="chart"><svg id="diagram" viewBox="0 0 1200 720"></svg></main></div><footer id="footer">一条线路一套表；同线车辆仅占用不同相位。</footer><script src="timetable.js?v=20260912-platform-fit1"></script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>TPF2 线路运行图</title>
+    <link rel="stylesheet" href="timetable.css?v=20260912-ui-structure1">
+</head>
+
+<body>
+    <header>
+        <div class="brand"><b>TPF2</b> // CTC DISPATCH</div>
+        <div class="title">线路循环运行图</div>
+        <div class="spacer"></div>
+        <div class="mode">SHADOW PLAN · 禁止自动执行</div>
+    </header>
+    <div class="workspace">
+        <nav>
+            <button id="network-view">站场图</button>
+            <button class="active">运行图</button>
+            <button>线路</button>
+            <button>车辆</button>
+            <button>告警</button>
+            <button>设置</button>
+        </nav>
+        <section class="list">
+            <div class="panel">
+                <h3>线路模板</h3>
+                <div id="summary">载入中…</div>
+            </div>
+            <div class="panel detail-panel">
+                <h3>当前线路</h3>
+                <div class="info" id="info">请选择线路</div>
+            </div>
+            <div class="line-list" id="lines"></div>
+        </section>
+        <main class="chart">
+            <svg id="diagram" viewBox="0 0 1200 720"></svg>
+        </main>
+    </div>
+    <footer id="footer">一条线路一套表；同线车辆仅占用不同相位。</footer>
+    <div id="rail-map-templates" data-template-files="templates/timetable.html" hidden aria-hidden="true"></div>
+    <script src="vendor/jquery-4.0.0.min.js"></script>
+    <script src="template-runtime.js?v=20260912-template-extraction1"></script>
+    <script src="timetable-page.js?v=20260912-ui-structure1"></script>
+    <script src="timetable.js?v=20260912-template-extraction1"></script>
+</body>
+
+</html>

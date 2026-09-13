@@ -6,9 +6,17 @@ import heapq
 import json
 import math
 import os
+import statistics
 import time
+import sys
 from collections import defaultdict
 from pathlib import Path
+
+REPOSITORY = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPOSITORY / "mcp_server" / "src"))
+
+from tpf2_mcp.station_preview import build_station_platforms, write_station_previews  # noqa: E402
+from tpf2_mcp.rail_crossings import detect_grade_separated_crossings  # noqa: E402
 
 
 def curve_length(edge: dict, nodes: dict[int, dict], steps: int = 12) -> float:
@@ -424,17 +432,40 @@ def offset_modular_station_platforms(station: dict, distance: float = 5.0) -> No
         terminal["platform_offset_m"] = distance
 
 
-def normalize_modular_station_platform_spans(station: dict) -> None:
-    """Give every platform in one modular construction its shared longitudinal span.
+def _nominal_module_span(observed_length: float, module_length_m: float | None,
+                         tolerance_m: float = 4.0) -> tuple[float, int | None]:
+    """Recover a construction span when operating rails stop inside module ends."""
+    if not module_length_m or module_length_m <= 0:
+        return round(observed_length, 1), None
+    module_count = max(1, round(observed_length / module_length_m))
+    nominal_length = module_count * module_length_m
+    if abs(nominal_length - observed_length) > tolerance_m:
+        return round(observed_length, 1), None
+    return round(nominal_length, 1), module_count
 
-    A switch inserted inside the construction can terminate one terminal's
-    degree-2 operating-edge chain before the physical platform end.  Modular
-    stations still have one construction-wide longitudinal footprint, so use
-    the union of the observed platform endpoints for rendering and the longest
-    observed terminal length for the common displayed platform length.
-    """
-    terminals = [terminal for terminal in station.get("terminals", []) if len(terminal.get("platform_centerline") or []) >= 2]
-    if len(terminals) < 2:
+
+def _extend_polyline_ends(line: list[list[float]], target_length: float) -> list[list[float]]:
+    """Extend a sampled centreline equally to the nominal platform module ends."""
+    result = [list(point) for point in line]
+    current_length = sum(math.dist(a, b) for a, b in zip(result, result[1:]))
+    extra_per_end = max(0.0, target_length - current_length) / 2
+    if len(result) < 2 or extra_per_end <= .01:
+        return result
+    start_dx, start_dy = result[0][0] - result[1][0], result[0][1] - result[1][1]
+    end_dx, end_dy = result[-1][0] - result[-2][0], result[-1][1] - result[-2][1]
+    start_length, end_length = math.hypot(start_dx, start_dy), math.hypot(end_dx, end_dy)
+    if start_length > 1e-6:
+        result[0][0] += start_dx / start_length * extra_per_end
+        result[0][1] += start_dy / start_length * extra_per_end
+    if end_length > 1e-6:
+        result[-1][0] += end_dx / end_length * extra_per_end
+        result[-1][1] += end_dy / end_length * extra_per_end
+    return result
+
+
+def _normalize_modular_platform_span_group(terminals: list[dict], module_length_m: float | None = None) -> None:
+    """Give compatible modular terminals their shared longitudinal span."""
+    if not terminals:
         return
     reference = max(terminals, key=lambda terminal: math.dist(terminal["platform_centerline"][0], terminal["platform_centerline"][-1]))
     reference_line = reference["platform_centerline"]
@@ -455,7 +486,8 @@ def normalize_modular_station_platform_spans(station: dict) -> None:
     shared_start = min(item[2] for item in oriented)
     shared_end = max(item[3] for item in oriented)
     observed_lengths = [terminal.get("platform_length_m") for terminal in terminals if isinstance(terminal.get("platform_length_m"), (int, float))]
-    common_length = round(max(observed_lengths), 1) if observed_lengths else round(shared_end - shared_start, 1)
+    observed_common_length = round(max(observed_lengths), 1) if observed_lengths else round(shared_end - shared_start, 1)
+    common_length, module_count = _nominal_module_span(observed_common_length, module_length_m)
     for terminal, line, start_projection, end_projection in oriented:
         if start_projection > shared_start + .01:
             delta = start_projection - shared_start
@@ -463,11 +495,120 @@ def normalize_modular_station_platform_spans(station: dict) -> None:
         if end_projection < shared_end - .01:
             delta = shared_end - end_projection
             line.append([line[-1][0] + axis[0] * delta, line[-1][1] + axis[1] * delta])
-        terminal["platform_centerline"] = line
+        terminal["platform_centerline"] = _extend_polyline_ends(line, common_length) if module_count else line
         terminal["platform_length_original_m"] = terminal.get("platform_length_m")
         terminal["platform_length_original_source"] = terminal.get("platform_length_source")
         terminal["platform_length_m"] = common_length
-        terminal["platform_length_source"] = "MODULAR_STATION_SHARED_SPAN_DERIVED"
+        if module_count:
+            terminal["platform_track_span_m"] = observed_common_length
+            terminal["platform_module_length_m"] = module_length_m
+            terminal["platform_module_count"] = module_count
+            terminal["platform_length_source"] = "MODULAR_STATION_NOMINAL_MODULE_SPAN_DERIVED"
+        else:
+            terminal["platform_length_source"] = "MODULAR_STATION_SHARED_SPAN_DERIVED"
+
+
+def normalize_modular_station_platform_spans(station: dict, module_length_m: float | None = None) -> None:
+    """Normalize one modular construction without mixing passenger and cargo.
+
+    A switch inserted inside the construction can terminate one terminal's
+    degree-2 operating-edge chain before the physical platform end.  Modular
+    passenger platforms may share a longitudinal footprint with each other,
+    while a cargo terminal in the same construction can intentionally be much
+    longer.  Therefore endpoint and length normalization is isolated by the
+    engine-observed ``cargo`` flag.
+    """
+    terminals = [terminal for terminal in station.get("terminals", []) if len(terminal.get("platform_centerline") or []) >= 2]
+    service_groups: dict[bool, list[dict]] = defaultdict(list)
+    for terminal in terminals:
+        service_groups[terminal.get("cargo") is True].append(terminal)
+    for group in service_groups.values():
+        if len(group) >= 2 or module_length_m:
+            _normalize_modular_platform_span_group(group, module_length_m)
+
+
+def _fit_fixed_platform_centerline(terminal: dict, target_length_m: float) -> None:
+    """Fit a straight prefab platform to its nominal construction length."""
+    track = terminal.get("operating_track_centerline") or terminal.get("platform_centerline") or []
+    if len(track) < 2:
+        return
+    dx, dy = track[-1][0] - track[0][0], track[-1][1] - track[0][1]
+    length = math.hypot(dx, dy)
+    if length <= 1e-6:
+        return
+    ux, uy = dx / length, dy / length
+    center = terminal.get("position") or {
+        "x": (track[0][0] + track[-1][0]) / 2,
+        "y": (track[0][1] + track[-1][1]) / 2,
+    }
+    half = target_length_m / 2
+    fitted_track = [
+        [center["x"] - ux * half, center["y"] - uy * half],
+        [center["x"] + ux * half, center["y"] + uy * half],
+    ]
+    if terminal.get("operating_track_centerline"):
+        old_track_mid = [
+            (track[0][0] + track[-1][0]) / 2,
+            (track[0][1] + track[-1][1]) / 2,
+        ]
+        old_platform = terminal.get("platform_centerline") or track
+        old_platform_mid = [
+            (old_platform[0][0] + old_platform[-1][0]) / 2,
+            (old_platform[0][1] + old_platform[-1][1]) / 2,
+        ]
+        offset = [old_platform_mid[0] - old_track_mid[0], old_platform_mid[1] - old_track_mid[1]]
+        terminal["operating_track_centerline"] = fitted_track
+        terminal["platform_centerline"] = [
+            [point[0] + offset[0], point[1] + offset[1]] for point in fitted_track
+        ]
+    else:
+        terminal["platform_centerline"] = fitted_track
+
+
+def normalize_fixed_construction_platform_lengths(station: dict) -> None:
+    """Use nominal platform lengths declared by known fixed station resources."""
+    files = {
+        str(value).lower().replace("\\", "/")
+        for value in station.get("construction_files", [])
+        if isinstance(value, str)
+    }
+    observed = [
+        float(terminal["platform_length_m"])
+        for terminal in station.get("terminals", [])
+        if isinstance(terminal.get("platform_length_m"), (int, float))
+    ]
+    if not observed:
+        return
+    target = None
+    evidence = None
+    if "station/rail/hhz.con" in files:
+        # The Mod changelog explicitly states an effective length of 220 m or
+        # more; 216 m is the construction rail edge, not its nominal platform.
+        target, evidence = 220.0, "HHZ_MOD_EFFECTIVE_LENGTH"
+    elif "station/rail/crst_hm.con" in files:
+        # Its terminal path resource is CRST_WA_450.mdl. Graph walks may see
+        # one 228 m half or both 456 m halves; both describe a 450 m platform.
+        target, evidence = 450.0, "CRST_WA_450_RESOURCE"
+    elif "station/train/yxll_hankou_railway_station.con" in files:
+        # PlaLen offers 180..600 m in 30 m steps; rails extend 3 m past each end.
+        reference = statistics.median(observed)
+        target = float(min(range(180, 601, 30), key=lambda value: abs(value - reference)))
+        evidence = "HANKOU_PLALEN_PARAMETER_GRID"
+    elif "station/train/yxll_wuhan_railway_station2.con" in files:
+        # Passenger tracks span -240..+240 m; 2 m connector edges caused 484 m.
+        target, evidence = 480.0, "WUHAN_FIXED_TRACK_SPAN"
+    if target is None:
+        return
+    for terminal in station.get("terminals", []):
+        value = terminal.get("platform_length_m")
+        if not isinstance(value, (int, float)):
+            continue
+        terminal["platform_track_span_m"] = value
+        terminal["platform_length_original_source"] = terminal.get("platform_length_source")
+        terminal["platform_length_m"] = target
+        terminal["platform_length_source"] = "CONSTRUCTION_RESOURCE_NOMINAL_LENGTH"
+        terminal["platform_length_evidence"] = evidence
+        _fit_fixed_platform_centerline(terminal, target)
 
 
 def offset_crst_hm_platforms(station: dict, distance: float = 5.0) -> None:
@@ -547,19 +688,30 @@ def physical_overview_segments(source: dict, nodes: dict[int, dict], adjacency: 
     return [segment for segment in segments if len(segment) >= 2]
 
 
-def prepare_rail_depots(source: dict, nodes: dict[int, dict], edges: dict[int, dict], maximum_candidate_distance: float = 45.0) -> list[dict]:
-    """Attach depot centres to the nearest observed physical rail edge.
+def prepare_rail_depots(source: dict, nodes: dict[int, dict], edges: dict[int, dict],
+                        used_edge_ids: set[int] | None = None,
+                        maximum_candidate_distance: float = 45.0) -> list[dict]:
+    """Attach depot centres to an observed depot stub, falling back to proximity.
 
     TPF2's VEHICLE_DEPOT component does not expose its connector in the live
-    probe.  Construction-file/assigned-rail-vehicle classification is kept as
-    engine evidence; proximity is explicitly labelled as derived fallback.
+    probe. A non-service edge with a degree-one endpoint inside the depot bounds
+    is stronger evidence than the nearest through track. Construction-file or
+    assigned-vehicle classification is kept as engine evidence; proximity is
+    explicitly labelled as the final derived fallback.
     """
+    used_edge_ids = used_edge_ids or set()
+    degree: dict[int, int] = defaultdict(int)
+    for edge in edges.values():
+        degree[edge["node0"]] += 1
+        degree[edge["node1"]] += 1
     result = []
     for depot in source.get("depots", []):
         center = depot.get("center")
         if not center:
             continue
         nearest = None
+        depot_stub = None
+        bounds = depot.get("bounds")
         for edge_id, edge in edges.items():
             a, b = nodes.get(edge["node0"]), nodes.get(edge["node1"])
             if not a or not b:
@@ -567,8 +719,19 @@ def prepare_rail_depots(source: dict, nodes: dict[int, dict], edges: dict[int, d
             distance, param, position = _project_xy(center, a, b)
             if nearest is None or distance < nearest["distance_m"]:
                 nearest = {"edge_id": edge_id, "edge_param": param, "distance_m": distance, "position": position}
+            if bounds and edge_id not in used_edge_ids:
+                for param_value, node_id, endpoint in ((0.0, edge["node0"], a), (1.0, edge["node1"], b)):
+                    inside = (bounds["min"]["x"] <= endpoint["x"] <= bounds["max"]["x"]
+                              and bounds["min"]["y"] <= endpoint["y"] <= bounds["max"]["y"])
+                    if degree[node_id] != 1 or not inside:
+                        continue
+                    endpoint_distance = math.hypot(center["x"] - endpoint["x"], center["y"] - endpoint["y"])
+                    if depot_stub is None or endpoint_distance < depot_stub["distance_m"]:
+                        depot_stub = {"edge_id": edge_id, "edge_param": param_value,
+                                      "distance_m": endpoint_distance, "position": dict(endpoint)}
+        selected = depot_stub or nearest
         engine_classified = bool(depot.get("rail_candidate"))
-        proximity_candidate = nearest is not None and nearest["distance_m"] <= maximum_candidate_distance
+        proximity_candidate = selected is not None and selected["distance_m"] <= maximum_candidate_distance
         if not engine_classified and not proximity_candidate:
             continue
         classification_source = depot.get("rail_classification_source") if engine_classified else "NEAREST_RAIL_EDGE_PROXIMITY_DERIVED"
@@ -581,12 +744,13 @@ def prepare_rail_depots(source: dict, nodes: dict[int, dict], edges: dict[int, d
             "parked_vehicle_count": len(depot.get("parked_vehicle_ids") or []),
             "parked_vehicle_count_source": depot.get("parked_vehicle_count_source") or "UNKNOWN",
         }
-        if nearest:
+        if selected:
             item.update({
-                "nearest_edge_id": nearest["edge_id"], "nearest_edge_param": round(nearest["edge_param"], 6),
-                "nearest_edge_distance_m": round(nearest["distance_m"], 1),
-                "track_connection_position": nearest["position"],
-                "track_connection_source": "NEAREST_PHYSICAL_RAIL_EDGE_DERIVED",
+                "nearest_edge_id": selected["edge_id"], "nearest_edge_param": round(selected["edge_param"], 6),
+                "nearest_edge_distance_m": round(selected["distance_m"], 1),
+                "track_connection_position": selected["position"],
+                "track_connection_source": ("DEPOT_BOUNDS_UNUSED_TRACK_ENDPOINT_DERIVED"
+                                            if depot_stub else "NEAREST_PHYSICAL_RAIL_EDGE_DERIVED"),
             })
         result.append(item)
     return sorted(result, key=lambda item: item["entity_id"])
@@ -674,7 +838,16 @@ def prepare(source: dict) -> dict:
             clipped_length = sum(math.dist(a, b) for a, b in zip(clipped_centerline, clipped_centerline[1:]))
             clipped = clipped_length > 0 and clipped_length + 1 < length
             terminal["platform_edge_ids"] = edge_ids
-            use_full_curve = fixed_terminal_track_geometry and length > 0
+            # Fixed custom stations commonly expose a small building/model AABB
+            # even though their terminal track is hundreds of metres long.  For
+            # the common construction pattern (one terminal node, one equal rail
+            # edge in each direction), the two-edge curve is the engine-created
+            # platform track itself.  Clipping it to the model AABB produced
+            # impossible 18--33 m platforms for station/rail/hhz.con and shortened
+            # Hankou's outer platforms.  Freestyle stations remain on their
+            # dedicated model-track reconstruction path.
+            known_fixed_terminal = terminal_model == "OTHER" and length > 0
+            use_full_curve = (fixed_terminal_track_geometry and length > 0) or known_fixed_terminal
             terminal["platform_length_m"] = round(length if use_full_curve else clipped_length if clipped_length > 0 else length, 1) or None
             terminal["platform_length_source"] = "FIXED_CONSTRUCTION_TERMINAL_TRACK_CURVE" if use_full_curve else "TERMINAL_TRACK_CLIPPED_TO_STATION_BOUNDS" if clipped else "TERMINAL_CURVE_TO_PRE_SWITCH_NODES" if length else "UNKNOWN"
             display_centerline = raw_centerline if use_full_curve else clipped_centerline
@@ -715,13 +888,41 @@ def prepare(source: dict) -> dict:
         elif "station/rail/eat1963_spitzkehre_cargo.con" in construction_files:
             mark_track_loading_terminals(station)
 
+    # A switch inserted inside a fixed prefab can cut one terminal's graph walk
+    # in half even though the platform model is unchanged.  Recover only a very
+    # strong same-construction consensus: at least four terminals, 75% clustered
+    # within 2% of the median, and only repair values below 75% of that span.
+    fixed_terminals_by_file: dict[str, list[dict]] = defaultdict(list)
+    for station in stations:
+        for terminal in station.get("terminals", []):
+            construction_file = str(terminal.get("construction_file") or "").lower().replace("\\", "/")
+            if terminal.get("station_model") == "OTHER" and construction_file:
+                fixed_terminals_by_file[construction_file].append(terminal)
+    for terminals in fixed_terminals_by_file.values():
+        lengths = [float(item["platform_length_m"]) for item in terminals
+                   if isinstance(item.get("platform_length_m"), (int, float))]
+        if len(lengths) < 4:
+            continue
+        reference = statistics.median(lengths)
+        tolerance = max(2.0, reference * .02)
+        support = sum(abs(value - reference) <= tolerance for value in lengths)
+        if reference <= 0 or support / len(lengths) < .75:
+            continue
+        for terminal in terminals:
+            value = terminal.get("platform_length_m")
+            if isinstance(value, (int, float)) and value < reference * .75:
+                terminal["platform_length_original_m"] = value
+                terminal["platform_length_original_source"] = terminal.get("platform_length_source")
+                terminal["platform_length_m"] = round(reference, 1)
+                terminal["platform_length_source"] = "FIXED_CONSTRUCTION_PEER_SPAN_DERIVED"
+
     # A modular construction may expose passenger and cargo terminals as
-    # separate station groups. Normalize the physical span by construction so
-    # both sides of that one construction use the same endpoints and length.
+    # separate station groups.  The normalizer deliberately keeps those two
+    # service types apart because their physical platform spans may differ.
     modular_terminals_by_construction: dict[int, list[dict]] = defaultdict(list)
     modular_files = {
-        "station/rail/modular_station/modular_station.con",
-        "station/rail/modular_station/crst_modular_station.con",
+        "station/rail/modular_station/modular_station.con": 40.0,
+        "station/rail/modular_station/crst_modular_station.con": 40.0,
     }
     for station in stations:
         for terminal in station.get("terminals", []):
@@ -731,7 +932,12 @@ def prepare(source: dict) -> dict:
             if isinstance(construction_id, int):
                 modular_terminals_by_construction[construction_id].append(terminal)
     for terminals in modular_terminals_by_construction.values():
-        normalize_modular_station_platform_spans({"terminals": terminals})
+        construction_file = str(terminals[0].get("construction_file") or "").lower()
+        normalize_modular_station_platform_spans(
+            {"terminals": terminals}, module_length_m=modular_files.get(construction_file)
+        )
+    for station in stations:
+        normalize_fixed_construction_platform_lengths(station)
 
     xs = [point["x"] for point in nodes.values()]
     ys = [point["y"] for point in nodes.values()]
@@ -742,10 +948,12 @@ def prepare(source: dict) -> dict:
         for edge_id in terminal.get("platform_model_edge_ids", [])
     }
     physical_overview = physical_overview_segments(source, nodes, adjacency, platform_model_edge_ids)
-    depots = prepare_rail_depots(source, nodes, edge_by_id)
+    depots = prepare_rail_depots(source, nodes, edge_by_id, used_edge_ids)
     rendered_edges = [edge for edge in source["edges"] if edge["entity_id"] not in platform_model_edge_ids]
+    grade_separated_crossings = detect_grade_separated_crossings(rendered_edges, nodes)
     result = {
         "schema_version": 1,
+        "save_id": source.get("save_id"),
         "diagram_type": "ENGINE_OBSERVED_GLOBAL_RAIL_GRAPH",
         "source_status": "ENGINE_OBSERVED",
         "bounds": {"min": {"x": min(xs), "y": min(ys)}, "max": {"x": max(xs), "y": max(ys)}},
@@ -756,9 +964,11 @@ def prepare(source: dict) -> dict:
         "lines": lines,
         "counts": {**source["counts"], "rendered_rail_edges": len(rendered_edges),
                    "platform_model_edges_excluded_from_rail_render": len(platform_model_edge_ids),
-                   "rail_depots": len(depots), "routed_lines": sum(bool(line["route_edge_ids"]) for line in lines), "disconnected_segments": len(disconnected)},
+                   "rail_depots": len(depots), "routed_lines": sum(bool(line["route_edge_ids"]) for line in lines),
+                   "disconnected_segments": len(disconnected), "grade_separated_crossings": len(grade_separated_crossings)},
         "routing": {"method": "PHYSICAL_GRAPH_SHORTEST_PATH_DERIVED", "disconnected_segments": disconnected},
         "physical_overview_segments": physical_overview,
+        "grade_separated_crossings": grade_separated_crossings,
         "limitations": [
             "Track, station and terminal coordinates are engine-observed.",
             "Line paths between observed stop terminals are derived by shortest distance on the physical rail graph.",
@@ -775,6 +985,7 @@ def build_manifest_and_tiles(result: dict, tile_size: float) -> tuple[dict, dict
     minimum = result["bounds"]["min"]
     nodes = {item["entity_id"]: item for item in result["nodes"]}
     tile_edges: dict[str, list[dict]] = defaultdict(list)
+    tile_crossings: dict[str, list[dict]] = defaultdict(list)
     tile_coordinates: dict[str, tuple[int, int]] = {}
     for edge in result["edges"]:
         a, b = nodes[edge["node0"]]["position"], nodes[edge["node1"]]["position"]
@@ -783,24 +994,34 @@ def build_manifest_and_tiles(result: dict, tile_size: float) -> tuple[dict, dict
         key = f"{ix}_{iy}"
         tile_coordinates[key] = (ix, iy)
         tile_edges[key].append(edge)
+    for crossing in result.get("grade_separated_crossings", []):
+        point = crossing["position"]
+        ix = math.floor((point["x"] - minimum["x"]) / tile_size)
+        iy = math.floor((point["y"] - minimum["y"]) / tile_size)
+        key = f"{ix}_{iy}"
+        tile_coordinates[key] = (ix, iy)
+        tile_crossings[key].append(crossing)
     tiles, index = {}, []
-    for key, edges in tile_edges.items():
+    for key in tile_edges.keys() | tile_crossings.keys():
+        edges = tile_edges.get(key, [])
         referenced = {edge[field] for edge in edges for field in ("node0", "node1")}
         ix, iy = tile_coordinates[key]
         tile = {
             "key": key,
             "nodes": [nodes[node_id] for node_id in sorted(referenced)],
             "edges": edges,
+            "grade_separated_crossings": tile_crossings.get(key, []),
         }
         tiles[key] = tile
         index.append({
-            "key": key, "edge_count": len(edges),
+            "key": key, "edge_count": len(edges), "bridge_crossing_count": len(tile_crossings.get(key, [])),
             "min": {"x": minimum["x"] + ix * tile_size, "y": minimum["y"] + iy * tile_size},
             "max": {"x": minimum["x"] + (ix + 1) * tile_size, "y": minimum["y"] + (iy + 1) * tile_size},
         })
     index.sort(key=lambda item: item["key"])
     manifest = {
         "schema_version": 2,
+        "save_id": result.get("save_id"),
         "diagram_type": result["diagram_type"],
         "source_status": result["source_status"],
         "generated_at": int(time.time()),
@@ -859,16 +1080,32 @@ def main() -> None:
     parser.add_argument("--input", type=Path, default=default_input)
     parser.add_argument("--output-directory", type=Path, default=Path("ui/rail-map"))
     parser.add_argument("--tile-size", type=float, default=2000.0)
+    parser.add_argument("--save-id")
     parser.add_argument("--station-model-ground-truth", type=Path, default=Path("ui/rail-map/station-model-ground-truth.json"))
     args = parser.parse_args()
     result = prepare(json.loads(args.input.read_text(encoding="utf-8")))
+    if args.save_id:
+        result["save_id"] = args.save_id
     if args.station_model_ground_truth.is_file():
         apply_station_model_ground_truth(result, json.loads(args.station_model_ground_truth.read_text(encoding="utf-8")))
+    for station in result.get("stations", []):
+        station["platforms"] = build_station_platforms(station)
     args.output_directory.mkdir(parents=True, exist_ok=True)
     encoded = json.dumps(result, ensure_ascii=False, separators=(",", ":"))
     (args.output_directory / "rail-network-data.json").write_text(encoded + "\n", encoding="utf-8")
     (args.output_directory / "rail-network-data.js").write_text("window.RAIL_NETWORK_DATA=" + encoded + ";\n", encoding="utf-8")
     manifest, tiles = build_manifest_and_tiles(result, args.tile_size)
+    preview_manifest = write_station_previews(
+        result,
+        args.output_directory / "station-previews",
+        generated_at=manifest["generated_at"],
+    )
+    manifest["station_previews"] = {
+        "directory": "station-previews",
+        "manifest": "station-previews/manifest.json",
+        "station_count": preview_manifest["station_count"],
+        "generated_at": preview_manifest["generated_at"],
+    }
     manifest_encoded = json.dumps(manifest, ensure_ascii=False, separators=(",", ":"))
     (args.output_directory / "rail-network-manifest.json").write_text(manifest_encoded + "\n", encoding="utf-8")
     (args.output_directory / "rail-network-manifest.js").write_text("window.RAIL_NETWORK_DATA=" + manifest_encoded + ";\n", encoding="utf-8")

@@ -10,6 +10,8 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
+from .save_scope import LEGACY_SAVE_ID
+
 
 class McpWorkLogStore:
     def __init__(self, path: Path):
@@ -36,7 +38,13 @@ class McpWorkLogStore:
                 details_json TEXT NOT NULL
             )"""
         )
+        columns = {row["name"] for row in connection.execute("PRAGMA table_info(mcp_work_log)")}
+        if "save_id" not in columns:
+            connection.execute(
+                f"ALTER TABLE mcp_work_log ADD COLUMN save_id TEXT NOT NULL DEFAULT '{LEGACY_SAVE_ID}'"
+            )
         connection.execute("CREATE INDEX IF NOT EXISTS mcp_work_log_time ON mcp_work_log(occurred_at DESC)")
+        connection.execute("CREATE INDEX IF NOT EXISTS mcp_work_log_save_time ON mcp_work_log(save_id,occurred_at DESC)")
         return connection
 
     @staticmethod
@@ -51,15 +59,28 @@ class McpWorkLogStore:
                 pass
         return time.time()
 
-    def _insert(self, row: tuple[Any, ...]) -> None:
+    def _insert(self, save_id: str, row: tuple[Any, ...]) -> None:
+        if not isinstance(save_id, str) or not save_id:
+            raise ValueError("MCP work log entry requires save_id")
+        source_key, *values = row
         with self._lock, closing(self._connect()) as connection, connection:
             connection.execute(
                 """INSERT OR IGNORE INTO mcp_work_log
-                   (source_key,occurred_at,action_type,summary,line_id,vehicle_id,applied,verification_status,details_json)
-                   VALUES (?,?,?,?,?,?,?,?,?)""", row,
+                   (source_key,occurred_at,action_type,summary,line_id,vehicle_id,applied,verification_status,details_json,save_id)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""", (f"{save_id}:{source_key}", *values, save_id),
             )
 
-    def sync_task_journal(self, path: Path) -> int:
+    def record_verified_action(self, save_id: str, source_key: str, action_type: str, summary: str,
+                               line_id: int | None = None, vehicle_id: int | None = None,
+                               details: dict[str, Any] | None = None, occurred_at: float | None = None) -> None:
+        """Persist one externally verified controlled operation."""
+        self._insert(save_id, (
+            source_key, time.time() if occurred_at is None else occurred_at, action_type, summary,
+            line_id, vehicle_id, 1, "POSTCONDITION_VERIFIED",
+            json.dumps(details or {}, ensure_ascii=False, separators=(",", ":")),
+        ))
+
+    def sync_task_journal(self, path: Path, save_id: str) -> int:
         """Import only postcondition-verified task steps; proposals are never logged as work done."""
         try:
             lines = Path(path).read_text(encoding="utf-8").splitlines()
@@ -71,9 +92,9 @@ class McpWorkLogStore:
                 item = json.loads(raw)
             except json.JSONDecodeError:
                 continue
-            if item.get("status") == "COMPLETED" and item.get("task_id"):
+            if item.get("status") == "COMPLETED" and item.get("task_id") and item.get("save_id") == save_id:
                 completed[item["task_id"]] = item
-        before = len(self.query(500))
+        before = len(self.query(save_id, 500))
         labels = {
             "BUY_VEHICLE": "购买车辆", "ASSIGN_VEHICLE_TO_LINE": "车辆分配到线路",
             "SET_LINE_STOP_POLICY": "调整停站策略", "SET_LINE_STOPS": "调整线路停靠站台",
@@ -94,12 +115,12 @@ class McpWorkLogStore:
                 label = labels.get(operation, operation)
                 suffix = f"线路 {line_id}" if isinstance(line_id, int) else f"车辆 {vehicle_id}" if isinstance(vehicle_id, int) else "游戏对象"
                 verified_at = verification.get("verified_at") or task.get("timeline", [{}])[-1].get("at")
-                self._insert((f"task:{task['task_id']}:{step.get('step_id') or step.get('sequence')}", self._timestamp(verified_at),
+                self._insert(save_id, (f"task:{task['task_id']}:{step.get('step_id') or step.get('sequence')}", self._timestamp(verified_at),
                               operation, f"{label} · {suffix}", line_id, vehicle_id, 1,
                               "POSTCONDITION_VERIFIED", json.dumps(step, ensure_ascii=False, separators=(",", ":"))))
-        return max(0, len(self.query(500)) - before)
+        return max(0, len(self.query(save_id, 500)) - before)
 
-    def sync_timetable_plan(self, path: Path) -> None:
+    def sync_timetable_plan(self, path: Path, save_id: str) -> None:
         try:
             raw = Path(path).read_bytes()
             plan = json.loads(raw.decode("utf-8"))
@@ -109,15 +130,25 @@ class McpWorkLogStore:
         digest = hashlib.sha256(raw).hexdigest()[:20]
         counts = plan.get("counts") or {}
         conflict = plan.get("global_conflict_plan") or {}
-        summary = f"生成全网运行图影子方案 · {counts.get('planned_lines', 0)} 条线路，消除 {conflict.get('conflicts_removed', 0)} 个站场相位冲突"
-        self._insert((f"plan:{digest}", modified, "TIMETABLE_PLAN_GENERATED", summary, None, None, 0,
+        summary = f"全网运行图系统测试 · {counts.get('planned_lines', 0)} 条线路，消除 {conflict.get('conflicts_removed', 0)} 个站场相位冲突"
+        if plan.get("save_id") != save_id:
+            return
+        self._insert(save_id, (f"plan:{digest}", modified, "TIMETABLE_PLAN_GENERATED", summary, None, None, 0,
                       "PLAN_ONLY_NOT_APPLIED", json.dumps({"counts": counts, "global_conflict_plan": conflict}, ensure_ascii=False, separators=(",", ":"))))
 
-    def query(self, limit: int = 50) -> list[dict[str, Any]]:
-        bounded = max(1, min(500, int(limit)))
+    def query(self, save_id: str, limit: int | None = 50) -> list[dict[str, Any]]:
         with self._lock, closing(self._connect()) as connection:
-            rows = connection.execute(
-                """SELECT id,occurred_at,action_type,summary,line_id,vehicle_id,applied,verification_status
-                   FROM mcp_work_log ORDER BY occurred_at DESC,id DESC LIMIT ?""", (bounded,),
-            ).fetchall()
-        return [{**dict(row), "applied": bool(row["applied"])} for row in rows]
+            sql = """SELECT id,save_id,occurred_at,action_type,summary,line_id,vehicle_id,applied,verification_status
+                     FROM mcp_work_log WHERE save_id=? ORDER BY occurred_at DESC,id DESC"""
+            if limit is None:
+                rows = connection.execute(sql, (save_id,)).fetchall()
+            else:
+                bounded = max(1, min(500, int(limit)))
+                rows = connection.execute(sql + " LIMIT ?", (save_id, bounded)).fetchall()
+        result = []
+        for row in rows:
+            item = {**dict(row), "applied": bool(row["applied"])}
+            if item["action_type"] == "TIMETABLE_PLAN_GENERATED":
+                item["summary"] = item["summary"].replace("生成全网运行图影子方案", "全网运行图系统测试")
+            result.append(item)
+        return result

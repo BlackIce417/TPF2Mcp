@@ -1,0 +1,72 @@
+<template id="overview-sidebar-template">
+    <div class="sidebar-view overview-sidebar">
+        <div class="panel-title">AI运行图建议</div>
+        <div class="section ai-suggestions" data-slot="suggestions"></div>
+        <div class="panel-title panel-title-action"><span>MCP工作日志</span><button type="button" class="work-log-all" data-action="work-log-all">查看全部</button></div>
+        <div class="section mcp-log" data-slot="work-log"></div>
+        <div class="panel-title">铁路线路（只读）</div>
+        <div class="section line-list" data-slot="lines"></div>
+    </div>
+</template>
+
+<template id="work-log-modal-template">
+    <div class="work-log-modal">
+        <button type="button" class="work-log-modal-backdrop" data-action="work-log-close" aria-label="关闭工作日志"></button>
+        <section class="work-log-dialog" role="dialog" aria-modal="true" aria-labelledby="work-log-dialog-title">
+            <div class="work-log-dialog-header">
+                <div><h2 id="work-log-dialog-title">MCP工作日志 · 全部动作</h2><p>当前存档的执行、阻挡、等待、取消与系统测试记录</p></div>
+                <button type="button" class="work-log-close" data-action="work-log-close" aria-label="关闭">×</button>
+            </div>
+            <div class="work-log-toolbar">
+                <div class="work-log-filters" role="group" aria-label="按状态筛选">
+                    <button type="button" data-work-log-filter="ALL">全部</button>
+                    <button type="button" data-work-log-filter="EXECUTED">已执行</button>
+                    <button type="button" data-work-log-filter="BLOCKED">被阻挡</button>
+                    <button type="button" data-work-log-filter="PENDING">待处理</button>
+                    <button type="button" data-work-log-filter="CANCELLED">已取消</button>
+                    <button type="button" data-work-log-filter="TEST">系统测试</button>
+                </div>
+                <input type="search" data-action="work-log-search" placeholder="筛选动作、线路或车辆" aria-label="筛选工作日志">
+            </div>
+            <div class="work-log-result-summary" data-field="work-log-summary"></div>
+            <div class="work-log-modal-list" data-slot="work-log-entries"></div>
+        </section>
+    </div>
+</template>
+
+<template id="work-log-detail-row-template">
+    <article class="work-log-detail-row">
+        <div class="work-log-detail-head"><time data-field="time"></time><span data-field="status"></span></div>
+        <h3 data-field="summary"></h3>
+        <div class="work-log-detail-meta"><code data-field="action"></code><span data-field="target"></span></div>
+        <p data-field="reason"></p>
+    </article>
+</template>
+
+<template id="suggestion-row-template">
+    <div class="suggestion">
+        <time data-field="time"></time>
+        <b><em data-field="label"></em><span data-field="title"></span></b>
+        <span class="suggestion-detail" data-field="detail"></span>
+    </div>
+</template>
+
+<template id="advice-more-template">
+    <button class="advice-more" data-action="advice-more"></button>
+</template>
+
+<template id="work-entry-template">
+    <div class="work-entry">
+        <time data-field="time"></time>
+        <span data-field="result"></span>
+        <span aria-hidden="true"> · </span>
+        <span data-field="summary"></span>
+    </div>
+</template>
+
+<template id="route-row-template">
+    <div class="event route-row">
+        <em data-field="name"></em>
+        <span data-field="stop-count"></span>
+    </div>
+</template>

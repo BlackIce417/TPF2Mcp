@@ -8,6 +8,7 @@ from typing import Any, Callable
 from ..journal import JsonlJournal
 from ..operations.capabilities import capability
 from ..operations.controller import OperationController
+from ..save_scope import snapshot_save_id
 from .goals import goal_capability, planned_steps, satisfied, scope_for
 from .policy import POLICIES, can_auto_execute
 
@@ -88,7 +89,7 @@ class TaskOrchestrator:
             if not templates: return {"status": "INVALID_GOAL", "reason": "NO_VERIFIED_DEPOT_OR_TEMPLATE_VEHICLE"}
             goal["source_vehicle_id"], goal["depot_id"] = templates[0]["entity_id"], templates[0]["raw_depot"]
         task_id = f"task-{uuid.uuid4()}"
-        task = {"task_id": task_id, "goal_type": goal_type, "goal": deepcopy(goal), "created_snapshot_sequence": index.state.get("sequence"), "status": "CREATED", "policy": policy, "approved": False, "scope": scope_for(goal_type, goal), "runtime_context": {}, "budget": {"max_steps": max_steps, "max_replans": max_replans, "max_write_operations": max_write_operations, "steps_used": 0, "writes_used": 0, "replans_used": 0}, "steps": [], "timeline": [], "result": None, "limitations": []}
+        task = {"task_id": task_id, "save_id": snapshot_save_id(index.state), "goal_type": goal_type, "goal": deepcopy(goal), "created_snapshot_sequence": index.state.get("sequence"), "status": "CREATED", "policy": policy, "approved": False, "scope": scope_for(goal_type, goal), "runtime_context": {}, "budget": {"max_steps": max_steps, "max_replans": max_replans, "max_write_operations": max_write_operations, "steps_used": 0, "writes_used": 0, "replans_used": 0}, "steps": [], "timeline": [], "result": None, "limitations": []}
         self._event(task, "TASK_CREATED", snapshot_sequence=index.state.get("sequence"))
         self._tasks[task_id] = task; self._order.append(task_id)
         return self._public(task)

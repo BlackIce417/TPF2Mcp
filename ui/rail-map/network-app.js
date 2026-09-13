@@ -1,17 +1,29 @@
 window.renderRailNetwork = function renderRailNetwork() {
   const p = window.RAIL_NETWORK_DATA;
+  const templates = window.RailMapTemplates;
   const svg = document.querySelector('#board');
   const tooltip = document.querySelector('#track-tooltip');
   const boardWrap = document.querySelector('#board-wrap');
-  document.querySelector('#local-view').classList.remove('selected');
-  document.querySelector('#network-view').classList.add('selected');
-  document.querySelector('#local-view').onclick = () => { window.location.search = ''; };
-  document.querySelector('#network-view').onclick = () => {};
+  $('#local-view').removeClass('selected').off('.stationPreview').on('click.stationPreview', event => {
+    event.preventDefault();
+    if (!selectedStation) {
+      window.showRailMapNotice('请选择对应车站');
+      return;
+    }
+    const target = new URL(window.location.href);
+    target.search = '';
+    target.searchParams.set('view', 'local');
+    target.searchParams.set('station', selectedStation.entity_id);
+    window.location.assign(target.href);
+  });
+  $('#network-view').addClass('selected').off('.stationPreview').on('click.stationPreview', event => event.preventDefault());
   if (!p || p.source_status !== 'ENGINE_OBSERVED') {
     document.querySelector('#station-name').textContent = '全路网';
     document.querySelector('#snapshot').textContent = '等待一次性铁路拓扑导出';
     document.querySelector('.mode').textContent = 'NETWORK CONTROL · PENDING';
-    document.querySelector('#sidebar').innerHTML = '<div class="panel-title">全路网数据</div><div class="section"><div class="event warn"><em>PENDING</em> 尚未生成 rail-network-data.js</div></div>';
+    const pending = templates.instantiate('pending-sidebar-template');
+    templates.slot(pending, 'message').appendChild(templates.message('PENDING', '尚未生成 rail-network-data.js', true));
+    document.querySelector('#sidebar').replaceChildren(pending);
     const NS = 'http://www.w3.org/2000/svg';
     const message = document.createElementNS(NS, 'text');
     Object.entries({x:600,y:360,fill:'#ffbd52','font-size':16,'text-anchor':'middle','font-family':'Microsoft YaHei'}).forEach(([k,v]) => message.setAttribute(k,v));
@@ -42,24 +54,16 @@ window.renderRailNetwork = function renderRailNetwork() {
   const edgeCurve=(edge,nodeById)=>{const a=nodeById.get(edge.node0),b=nodeById.get(edge.node1),pa=P(a),pb=P(b),fallback={x:b.x-a.x,y:b.y-a.y},ta=T(edge.tangent0||fallback),tb=T(edge.tangent1||fallback);return{a:pa,c1:{x:pa.x+ta.x/3,y:pa.y+ta.y/3},c2:{x:pb.x-tb.x/3,y:pb.y-tb.y/3},b:pb};};
   const drawPixiEdge=(graphics,edge,nodeById)=>{const c=edgeCurve(edge,nodeById);graphics.moveTo(c.a.x,c.a.y).bezierCurveTo(c.c1.x,c.c1.y,c.c2.x,c.c2.y,c.b.x,c.b.y);};
   const mapLayer=S('g',{id:'network-map-layer'});
-  const detailLayer=S('g',{id:'network-detail-layer'},'',mapLayer);
   const platformLayer=S('g',{id:'network-platform-layer'},'',mapLayer);
+  const detailLayer=S('g',{id:'network-detail-layer'},'',mapLayer);
+  const bridgeLayer=S('g',{id:'network-bridge-layer'},'',mapLayer);
   let pixiApp=null;
   try{if(window.PIXI)pixiApp=new PIXI.Application({resizeTo:boardWrap,backgroundAlpha:0,antialias:true,autoDensity:true,resolution:Math.min(window.devicePixelRatio||1,2),powerPreference:'high-performance'});}catch(error){console.error('PixiJS rail renderer unavailable; using SVG fallback',error);}
   const pixiWorld=pixiApp?new PIXI.Container():null;
   if(pixiApp){pixiApp.view.id='rail-webgl';pixiApp.stage.addChild(pixiWorld);boardWrap.insertBefore(pixiApp.view,svg);}
 
-  const palette=['#2fd5ff','#ffca57','#c995ff','#53e58e','#ff748b','#4f8dff','#f59a45','#9be35d','#f06de1','#79d8c9','#f2ef76','#a5b7ff'];
-  const lineColor=new Map(p.lines.map((line,index)=>[line.entity_id,palette[index%palette.length]]));
   const physicalOverviewPath=(p.physical_overview_segments||[]).map(segment=>segment.map((point,index)=>{const q=P({x:point[0],y:point[1]});return `${index?'L':'M'}${q.x.toFixed(2)},${q.y.toFixed(2)}`;}).join('')).join('');
-  const physicalOverview=physicalOverviewPath?S('path',{d:physicalOverviewPath,fill:'none',stroke:'#7593a6','stroke-width':1.15,opacity:1,'vector-effect':'non-scaling-stroke','pointer-events':'none','data-layer':'physical-overview'},'',mapLayer):null;
-  const linePaths = new Map();
-  p.lines.forEach((line,index) => {
-    const d=line.overview_segments.map(segment=>segment.map((point,pointIndex)=>{const q=P({x:point[0],y:point[1]});return `${pointIndex?'L':'M'}${q.x.toFixed(2)},${q.y.toFixed(2)}`;}).join('')).join('');
-    if (!d) return;
-    const path=S('path',{d,fill:'none',stroke:palette[index%palette.length],'stroke-width':1.7,opacity:1,'vector-effect':'non-scaling-stroke','pointer-events':'stroke','data-line-id':line.entity_id},'',mapLayer);
-    linePaths.set(line.entity_id,path);
-  });
+  const physicalOverview=physicalOverviewPath?S('path',{d:physicalOverviewPath,fill:'none',stroke:'#83a9bd','stroke-width':1.15,opacity:1,'vector-effect':'non-scaling-stroke','pointer-events':'none','data-layer':'physical-overview'},'',mapLayer):null;
 
   const stationLayer=S('g',{id:'network-station-layer'});
   const depotLayer=S('g',{id:'network-depot-layer'});
@@ -68,82 +72,156 @@ window.renderRailNetwork = function renderRailNetwork() {
   const depotViews=[];
   const platformViews=[];
   const trainViews=new Map(),signalViews=new Map();
+  let signalsVisible=true;
   const lineById=new Map(p.lines.map(line=>[line.entity_id,line]));
   const stationById=new Map(p.stations.map(station=>[station.entity_id,station]));
-  const edgeById=new Map((p.edges||[]).map(edge=>[edge.entity_id,edge]));
-  const stationsByPlatformEdge=new Map();
-  p.stations.forEach(station=>(station.terminals||[]).forEach(terminal=>(terminal.platform_edge_ids||[]).forEach(edgeId=>{const values=stationsByPlatformEdge.get(edgeId)||[];if(!values.some(item=>item.entity_id===station.entity_id))values.push(station);stationsByPlatformEdge.set(edgeId,values);}))); 
-  const normalizedStationName=station=>String(station.name||'').trim().toLocaleLowerCase('zh-CN');
-  const terminalIsHighSpeed=terminal=>{
-    if(terminal.cargo)return false;
-    const speeds=(terminal.platform_edge_ids||[]).map(id=>edgeById.get(id)?.speed_limit_mps).filter(Number.isFinite);
-    if(speeds.some(speed=>speed*3.6>=250))return true;
-    return (terminal.track_resource_files||[]).some(file=>/(?:250|300|320|350|360|380|385|400|420)\s*(?:kph|kmh)?/i.test(file));
-  };
-  const stationYardClass=station=>{
-    const terminals=station.terminals||[],hasHigh=terminals.some(terminalIsHighSpeed),hasNormal=terminals.some(terminal=>!terminalIsHighSpeed(terminal));
-    return hasHigh&&hasNormal?'MIXED':hasHigh?'HIGH_SPEED':'CONVENTIONAL';
-  };
-  const sameLogicalYard=(station,other)=>normalizedStationName(other)===normalizedStationName(station)&&stationYardClass(other)===stationYardClass(station)&&Math.hypot(other.center.x-station.center.x,other.center.y-station.center.y)<=500;
-  const relatedStations=station=>p.stations.filter(other=>sameLogicalYard(station,other));
-  const logicalStations=p.stations.filter((station,index)=>!p.stations.slice(0,index).some(other=>sameLogicalYard(station,other)));
-  const stationYardLabel=station=>{
-    const terminals=relatedStations(station).flatMap(item=>item.terminals||[]),high=terminals.filter(terminalIsHighSpeed),normal=terminals.filter(terminal=>!terminalIsHighSpeed(terminal));
-    const labels=[];
-    if(high.length)labels.push('高速场（客）');
-    if(normal.length){
-      const passenger=normal.some(terminal=>!terminal.cargo),cargo=normal.some(terminal=>terminal.cargo);
-      labels.push(passenger&&cargo?'普速场（客货混用）':cargo?'普速场（货）':'普速场（客）');
-    }
-    return labels.join(' / ');
-  };
-  const stationPreview=station=>{const yard=stationYardLabel(station);return yard?`${station.name}－${yard}`:station.name;};
-  let liveState=null,operationsContext={lines:[]},aiAdvice={suggestions:[]},aiAdviceVisibleCount=10,aiAdviceGeneration=null,mcpWorkLog={entries:[]},selectedStation=null,selectedVehicleId=null,vehicleDetail=null,vehicleDetailPending=false,vehicleDetailLoadedAt=0;
+  let liveState=null,operationsContext={lines:[]},aiAdvice={suggestions:[]},aiAdviceVisibleCount=10,aiAdviceGeneration=null,mcpWorkLog={entries:[]},allMcpWorkLog={entries:[]},workLogModal=null,workLogFilter='ALL',workLogSearch='',workLogRequestPending=false,workLogLoadError=null,workLogReturnFocus=null,selectedStation=null,selectedVehicleId=null,vehicleDetail=null,vehicleDetailPending=false,vehicleDetailLoadedAt=0;
   const operationLineById=new Map();
   let stationLogRows=[],stationLogRequestPending=false;
   let lastVehicleSampleAt=null;
+  const stationsByPlatformEdge=new Map();
+  p.stations.forEach(station=>(station.terminals||[]).forEach(terminal=>(terminal.platform_edge_ids||[]).forEach(edgeId=>{const values=stationsByPlatformEdge.get(edgeId)||[];if(!values.some(item=>item.entity_id===station.entity_id))values.push(station);stationsByPlatformEdge.set(edgeId,values);}))); 
+  const normalizedStationName=station=>String(station.name||'').trim().toLocaleLowerCase('zh-CN');
+  const sameLogicalYard=(station,other)=>normalizedStationName(other)===normalizedStationName(station)&&Math.hypot(other.center.x-station.center.x,other.center.y-station.center.y)<=500;
+  const relatedStations=station=>p.stations.filter(other=>sameLogicalYard(station,other));
+  const logicalStations=p.stations.filter((station,index)=>!p.stations.slice(0,index).some(other=>sameLogicalYard(station,other)));
+  const terminalSelectorKey=(stationId,stationIndex,terminalId)=>`${stationId}:${stationIndex}:${terminalId}`;
+  const lineServesPassengerTerminal=(line,station)=>{
+    const selectors=new Set(relatedStations(station).flatMap(item=>(item.terminals||[]).filter(terminal=>!terminal.cargo).map(terminal=>terminalSelectorKey(item.entity_id,terminal.station_index,terminal.terminal_index))));
+    return (line.stops||[]).some(stop=>{
+      if(selectors.has(terminalSelectorKey(stop.station_id,stop.station_index,stop.terminal_id)))return true;
+      return (stop.alternative_terminals||[]).some(terminal=>selectors.has(terminalSelectorKey(stop.station_id,terminal.station_index,terminal.terminal_id)));
+    });
+  };
+  const stationPassengerServiceClass=station=>{
+    let high=0,conventional=0,unknown=0;
+    (operationsContext.lines||[]).filter(line=>lineServesPassengerTerminal(line,station)).forEach(line=>{
+      const vehicles=line.active_passenger_vehicles||{};
+      high+=Number(vehicles.high_speed)||0;
+      conventional+=Number(vehicles.conventional)||0;
+      unknown+=Number(vehicles.unknown_speed)||0;
+    });
+    if(high&&conventional)return 'MIXED';
+    if(unknown)return 'UNKNOWN';
+    if(high)return 'HIGH_SPEED';
+    if(conventional)return 'CONVENTIONAL';
+    return 'UNKNOWN';
+  };
+  const stationYardLabel=station=>{
+    const terminals=relatedStations(station).flatMap(item=>item.terminals||[]),passenger=terminals.some(terminal=>!terminal.cargo),cargo=terminals.some(terminal=>terminal.cargo);
+    if(!passenger)return cargo?'普速场(货)':'';
+    const serviceClass=stationPassengerServiceClass(station);
+    if(serviceClass==='CONVENTIONAL')return cargo?'普速场(客-货)':'普速场(客)';
+    const passengerLabel=serviceClass==='HIGH_SPEED'?'高速场(客)':serviceClass==='MIXED'?'高普混合场(客)':'客运场(待确认)';
+    return cargo?`${passengerLabel}/普速场(货)`:passengerLabel;
+  };
+  const stationBaseName=station=>{const name=String(station.name||`车站 ${station.entity_id}`);return name.endsWith('站')?name.slice(0,-1):name;};
+  const stationPreview=station=>{const name=stationBaseName(station),yard=stationYardLabel(station);return yard?`${name}-${yard}`:name;};
+  const physicalPlatforms=station=>station.platforms||(station.terminals||[]).map((terminal,index)=>({platform_index:index,platform_kind:'SIDE_OR_SINGLE_FACE',cargo:terminal.cargo,terminal_faces:[{station_index:terminal.station_index,terminal_index:terminal.terminal_index,node_id:terminal.node_id}],platform_centerline:terminal.platform_centerline||terminal.operating_track_centerline||[],platform_length_m:terminal.platform_length_m}));
+  const depotDisplayName=depot=>{
+    const fallback=`车辆段 ${depot.entity_id}`;
+    const name=String(depot.name||fallback).trim();
+    return ({'汉口所':'汉口动车所','武汉所':'武汉动车所'})[name]||name;
+  };
+  const sideOfPolyline=(points,point)=>{
+    let bestDistance=Infinity,bestSide=0;
+    for(let index=0;index+1<points.length;index+=1){
+      const a=points[index],b=points[index+1],dx=b[0]-a[0],dy=b[1]-a[1],lengthSquared=dx*dx+dy*dy;
+      if(lengthSquared<=1e-9)continue;
+      const ratio=Math.max(0,Math.min(1,((point.x-a[0])*dx+(point.y-a[1])*dy)/lengthSquared));
+      const nearest={x:a[0]+dx*ratio,y:a[1]+dy*ratio},distance=(point.x-nearest.x)**2+(point.y-nearest.y)**2;
+      if(distance<bestDistance){bestDistance=distance;bestSide=dx*(point.y-nearest.y)-dy*(point.x-nearest.x);}
+    }
+    return bestSide;
+  };
+  const faceForPointer=(station,platform,event)=>{
+    const faces=platform.terminal_faces||[];
+    if(faces.length<2)return faces[0];
+    const rect=boardWrap.getBoundingClientRect(),screenX=(event.clientX-rect.left)*1200/rect.width,screenY=(event.clientY-rect.top)*720/rect.height;
+    const pointerSide=sideOfPolyline(platform.platform_centerline,worldPoint(screenX,screenY));
+    const terminalByIndex=new Map((station.terminals||[]).map(terminal=>[terminal.terminal_index,terminal]));
+    return faces.reduce((best,face)=>{
+      const terminal=terminalByIndex.get(face.terminal_index),track=terminal?.operating_track_centerline||terminal?.platform_centerline||[];
+      if(track.length<2)return best;
+      const middle=track[Math.floor(track.length/2)],score=sideOfPolyline(platform.platform_centerline,{x:middle[0],y:middle[1]})*pointerSide;
+      return !best||score>best.score?{face,score}:best;
+    },null)?.face||faces[0];
+  };
   const servedStationIds=new Set(p.lines.flatMap(line=>line.stops.map(stop=>stop.station_group_id)));
   p.stations.forEach(station=>{
-    const terminals=station.terminals||[];
-    terminals.forEach(terminal=>{
-      const platformLine=terminal.platform_centerline||[],hitLine=platformLine.length>=2?platformLine:(terminal.terminal_hit_centerline||[]);
+    physicalPlatforms(station).forEach(platform=>{
+      const platformLine=platform.platform_centerline||[],hitLine=platformLine;
       if(hitLine.length>=2){
+        const widthUnits=platform.platform_width_units||(platform.platform_kind==='ISLAND'?2:1);
         const makePath=line=>line.map((point,index)=>{const q=P({x:point[0],y:point[1]});return `${index?'L':'M'}${q.x.toFixed(5)},${q.y.toFixed(5)}`;}).join('');
         const platformPath=platformLine.length>=2?makePath(platformLine):'';
         const hitPath=makePath(hitLine);
-        const outline=platformPath?S('path',{d:platformPath,fill:'none',stroke:'#26343d','stroke-width':8,'vector-effect':'non-scaling-stroke','stroke-linecap':'round','stroke-linejoin':'round','pointer-events':'none'},'',platformLayer):null;
-        const surface=platformPath?S('path',{d:platformPath,fill:'none',stroke:'#96a2a8','stroke-width':6,'vector-effect':'non-scaling-stroke','stroke-linecap':'round','stroke-linejoin':'round','pointer-events':'none'},'',platformLayer):null;
-        const hit=S('path',{d:hitPath,fill:'none',stroke:'transparent','stroke-width':10,'vector-effect':'non-scaling-stroke','stroke-linecap':'round','pointer-events':'stroke',cursor:'pointer'},'',platformLayer);
-        const show=()=>{tooltip.textContent=representedMeters()>=50?stationPreview(station):`${terminal.terminal_index+1}台`;tooltip.style.display='block';};
-        hit.addEventListener('pointerenter',show);hit.addEventListener('pointermove',event=>{show();moveTooltip(event);});hit.addEventListener('pointerleave',()=>{tooltip.style.display='none';});
-        platformViews.push({outline,surface,hit,station,terminal});
+        const outline=platformPath?S('path',{d:platformPath,fill:'none',stroke:'#26343d','stroke-width':6*widthUnits+2,'vector-effect':'non-scaling-stroke','stroke-linecap':'round','stroke-linejoin':'round','pointer-events':'none'},'',platformLayer):null;
+        const surface=platformPath?S('path',{d:platformPath,fill:'none',stroke:'#96a2a8','stroke-width':6*widthUnits,'vector-effect':'non-scaling-stroke','stroke-linecap':'round','stroke-linejoin':'round','pointer-events':'none'},'',platformLayer):null;
+        const divider=platform.platform_kind==='ISLAND'?S('path',{d:platformPath,fill:'none',stroke:'#58656d','stroke-width':1,'stroke-dasharray':'4 3','vector-effect':'non-scaling-stroke','pointer-events':'none',display:'none'},'',platformLayer):null;
+        const hit=S('path',{d:hitPath,fill:'none',stroke:'transparent','stroke-width':6*widthUnits+4,'vector-effect':'non-scaling-stroke','stroke-linecap':'round','pointer-events':'stroke',cursor:'pointer'},'',platformLayer);
+        const show=event=>{if(divider)divider.style.display='block';const face=faceForPointer(station,platform,event),kind=platform.cargo?'货':'客';tooltip.textContent=`${Number(face?.terminal_index??platform.platform_index)+1}站台（${kind}）`;tooltip.style.display='block';};
+        hit.addEventListener('pointerenter',show);hit.addEventListener('pointermove',event=>{show(event);moveTooltip(event);});hit.addEventListener('pointerleave',()=>{if(divider)divider.style.display='none';tooltip.style.display='none';});
+        platformViews.push({outline,surface,divider,hit,station,platform,widthUnits});
       }
     });
   });
   const moveTooltip=event=>{const rect=boardWrap.getBoundingClientRect();tooltip.style.left=`${event.clientX-rect.left+12}px`;tooltip.style.top=`${event.clientY-rect.top+12}px`;};
   const scaleBarPixels=92;
-  let zoom=1,panX=0,panY=0,dragging=false,dragPointerId=null,lastX=0,lastY=0,dragStartX=0,dragStartY=0,suppressClick=false,selectedLine=null;
+  let zoom=1,panX=0,panY=0,dragging=false,dragPointerId=null,lastX=0,lastY=0,dragStartX=0,dragStartY=0,suppressClick=false;
   let desiredTileKeys=new Set();
   const loadedTiles=new Map(),pendingTiles=new Map();
+  let bridgeRenderFrame=null;
+  const renderVisibleBridges=()=>{
+    bridgeRenderFrame=null;
+    bridgeLayer.replaceChildren();
+    const crossings=[],fallbackEdges=[],fallbackNodes=new Map();
+    const visibleEdgePaths=new Map(),visibleEdges=new Map(),visibleNodes=new Map(),visibleEdgeIdsByNode=new Map();
+    loadedTiles.forEach(entry=>{
+      entry.paths.forEach((path,edgeId)=>visibleEdgePaths.set(Number(edgeId),path));
+      entry.tileNodes.forEach((position,nodeId)=>visibleNodes.set(Number(nodeId),position));
+      entry.tile.edges.forEach(edge=>{
+        visibleEdges.set(Number(edge.entity_id),edge);
+        [edge.node0,edge.node1].forEach(nodeId=>{
+          const key=Number(nodeId),values=visibleEdgeIdsByNode.get(key)||[];
+          if(!values.includes(Number(edge.entity_id)))values.push(Number(edge.entity_id));
+          visibleEdgeIdsByNode.set(key,values);
+        });
+      });
+      if(Array.isArray(entry.tile.grade_separated_crossings))crossings.push(...entry.tile.grade_separated_crossings);
+      else{
+        entry.tile.edges.forEach(edge=>fallbackEdges.push(edge));
+        entry.tileNodes.forEach((position,nodeId)=>fallbackNodes.set(nodeId,position));
+      }
+    });
+    if(fallbackEdges.length)crossings.push(...window.RailBridgeCrossings.detect(fallbackEdges,fallbackNodes));
+    window.RailBridgeCrossings.renderSvg(crossings,P,S,bridgeLayer,{
+      trackStrokeWidth:1,
+      upperPathForEdge:edgeId=>visibleEdgePaths.get(Number(edgeId)),
+      upperEdgeIdsForBridge:(crossing,shape)=>window.RailBridgeCrossings.expandUpperEdgeIds(
+        crossing,shape,visibleEdges,visibleNodes,visibleEdgeIdsByNode,
+      ),
+      upperPointsForEdge:edgeId=>{
+        const edge=visibleEdges.get(Number(edgeId));
+        return edge?window.RailBridgeCrossings.sampleEdge(edge,visibleNodes):null;
+      },
+    });
+  };
+  const scheduleBridgeRender=()=>{
+    if(bridgeRenderFrame!==null)return;
+    bridgeRenderFrame=requestAnimationFrame(renderVisibleBridges);
+  };
   const pixiDomScale=()=>{const rect=boardWrap.getBoundingClientRect();return Math.min(rect.width/1200,rect.height/720);};
   const syncPixiViewport=()=>{if(!pixiWorld)return;const rect=boardWrap.getBoundingClientRect(),scale=pixiDomScale(),offsetX=(rect.width-1200*scale)/2,offsetY=(rect.height-720*scale)/2;pixiWorld.scale.set(scale*zoom);pixiWorld.position.set(offsetX+scale*(600+panX-600*zoom),offsetY+scale*(360+panY-360*zoom));};
-  const makePixiTile=(tile,nodeById)=>{if(!pixiWorld)return null;const container=new PIXI.Container(),track=new PIXI.Graphics(),selection=new PIXI.Graphics();track.lineStyle(1,0x83a9bd,1,.5,true);tile.edges.forEach(edge=>drawPixiEdge(track,edge,nodeById));container.addChild(track,selection);pixiWorld.addChild(container);return{container,selection,routeScale:null,selectedLine:null};};
-  const redrawPixiSelection=entry=>{if(!entry.pixi)return;const screenScale=Math.max(.0001,pixiDomScale()*zoom);if(entry.pixi.routeScale===screenScale&&entry.pixi.selectedLine===selectedLine)return;entry.pixi.routeScale=screenScale;entry.pixi.selectedLine=selectedLine;entry.pixi.selection.clear();if(selectedLine===null)return;entry.pixi.selection.lineStyle(3/screenScale,PIXI.utils.string2hex(lineColor.get(selectedLine)),1,.5,false);entry.tile.edges.filter(edge=>(edge.line_ids||[]).includes(selectedLine)).forEach(edge=>drawPixiEdge(entry.pixi.selection,edge,entry.tileNodes));};
+  const makePixiTile=(tile,nodeById)=>{if(!pixiWorld)return null;const container=new PIXI.Container(),track=new PIXI.Graphics();track.lineStyle(1,0x83a9bd,1,.5,true);tile.edges.forEach(edge=>drawPixiEdge(track,edge,nodeById));container.addChild(track);pixiWorld.addChild(container);return{container};};
   window.RAIL_NETWORK_TILES={};
   const updateTileStatus=()=>{const value=document.querySelector('#loaded-tile-count');if(value)value.textContent=`${loadedTiles.size} / ${p.tiles.length}`;};
   const representedMeters=()=>scaleBarPixels/baseScale/zoom;
-  const applyLineStyles=()=>{
+  const updateMapDetailVisibility=()=>{
     const detail=representedMeters()<p.detail_load_threshold_m;
     if(physicalOverview)physicalOverview.setAttribute('opacity',detail?0:1);
-    linePaths.forEach((path,id)=>{
-      const selected=id===selectedLine;
-      path.setAttribute('opacity',detail?0:1);
-      path.setAttribute('stroke-width',selected?4:1.7);
-      path.setAttribute('pointer-events',detail&&!selected?'none':'stroke');
-    });
     const showPlatforms=detail,closePlatforms=representedMeters()<120;
-    loadedTiles.forEach(redrawPixiSelection);
-    platformViews.forEach(view=>{if(view.outline){view.outline.style.display=showPlatforms?'block':'none';view.outline.setAttribute('stroke-width',closePlatforms?8:2.5);}if(view.surface){view.surface.style.display=showPlatforms?'block':'none';view.surface.setAttribute('stroke-width',closePlatforms?6:1.5);}view.hit.setAttribute('pointer-events',showPlatforms?'stroke':'none');});
+    platformViews.forEach(view=>{if(view.outline){view.outline.style.display=showPlatforms?'block':'none';view.outline.setAttribute('stroke-width',(closePlatforms?6:1.5)*view.widthUnits+2);}if(view.surface){view.surface.style.display=showPlatforms?'block':'none';view.surface.setAttribute('stroke-width',(closePlatforms?6:1.5)*view.widthUnits);}if(!showPlatforms&&view.divider)view.divider.style.display='none';view.hit.setAttribute('stroke-width',(closePlatforms?6:1.5)*view.widthUnits+4);view.hit.setAttribute('pointer-events',showPlatforms?'stroke':'none');});
   };
   const screenPoint=point=>{const q=P(point);return{x:600+(q.x-600)*zoom+panX,y:360+(q.y-360)*zoom+panY};};
   const worldPoint=(x,y)=>{
@@ -166,11 +244,10 @@ window.renderRailNetwork = function renderRailNetwork() {
     const connector=S('line',{stroke:'#5cc7d8','stroke-width':1,'stroke-dasharray':'3 2',opacity:.8,'pointer-events':'none'},'',depotLayer);
     const group=S('g',{'data-depot-id':depot.entity_id,cursor:'help'},'',depotLayer);
     const marker=S('path',{d:'M-5,-4 L5,-4 L5,4 L-5,4 Z M-2,4 L-2,-1 L2,-1 L2,4',fill:'#102936',stroke:'#62e0ec','stroke-width':1.2,'fill-rule':'evenodd'},'',group);
-    S('text',{x:0,y:-7,fill:'#9ef4fa','font-size':6.5,'font-family':'Consolas','text-anchor':'middle','paint-order':'stroke',stroke:'#061019','stroke-width':2},'DEPOT',group);
+    S('text',{x:0,y:-7,fill:'#9ef4fa','font-size':6.5,'font-family':'Consolas, Microsoft YaHei','text-anchor':'middle','paint-order':'stroke',stroke:'#061019','stroke-width':2},depotDisplayName(depot),group);
     const show=event=>{
       const parked=depot.parked_vehicle_count_source==='UNKNOWN'?'场内车辆 UNKNOWN':`场内 ${depot.parked_vehicle_count}`;
-      const classification=depot.rail_classification_source==='NEAREST_RAIL_EDGE_PROXIMITY_DERIVED'?'铁路候选（邻轨推导）':'铁路车辆段';
-      tooltip.textContent=`${depot.name} · ${classification} · 配属 ${depot.assigned_vehicle_count} · ${parked}`;
+      tooltip.textContent=`${depotDisplayName(depot)} · 配属 ${depot.assigned_vehicle_count} · ${parked}`;
       tooltip.style.display='block';marker.setAttribute('fill','#1f6170');moveTooltip(event);
     };
     group.addEventListener('pointerenter',show);group.addEventListener('pointermove',show);group.addEventListener('pointerleave',()=>{tooltip.style.display='none';marker.setAttribute('fill','#102936');});
@@ -189,15 +266,16 @@ window.renderRailNetwork = function renderRailNetwork() {
     const tileNodes=new Map(tile.nodes.map(node=>[node.entity_id,node.position]));
     const paths=new Map(tile.edges.map(edge=>[edge.entity_id,edgePath(edge,tileNodes)]));
     if(!pixiApp)tile.edges.forEach(edge=>S('path',{d:paths.get(edge.entity_id),fill:'none',stroke:'#83a9bd','stroke-width':1,'vector-effect':'non-scaling-stroke','pointer-events':'none'},'',group));
-    const entry={group,resource,tile,tileNodes,pixi:makePixiTile(tile,tileNodes)};loadedTiles.set(key,entry);redrawPixiSelection(entry);
+    const entry={group,resource,tile,tileNodes,paths,pixi:makePixiTile(tile,tileNodes)};loadedTiles.set(key,entry);
     updateTileStatus();
+    scheduleBridgeRender();
   };
   window.addEventListener('rail-network-tile',event=>{
     const key=event.detail,tile=window.RAIL_NETWORK_TILES[key],script=pendingTiles.get(key);
     if(tile&&script)renderTile(key,tile,script);
     delete window.RAIL_NETWORK_TILES[key];pendingTiles.delete(key);
   });
-  const unloadTile=key=>{const loaded=loadedTiles.get(key);if(loaded){loaded.group.remove();loaded.resource.remove();if(loaded.pixi){loaded.pixi.container.parent?.removeChild(loaded.pixi.container);loaded.pixi.container.destroy({children:true});}loadedTiles.delete(key);updateTileStatus();}const pending=pendingTiles.get(key);if(pending){pending.remove();pendingTiles.delete(key);}delete window.RAIL_NETWORK_TILES[key];};
+  const unloadTile=key=>{const loaded=loadedTiles.get(key);if(loaded){loaded.group.remove();loaded.resource.remove();if(loaded.pixi){loaded.pixi.container.parent?.removeChild(loaded.pixi.container);loaded.pixi.container.destroy({children:true});}loadedTiles.delete(key);updateTileStatus();scheduleBridgeRender();}const pending=pendingTiles.get(key);if(pending){pending.remove();pendingTiles.delete(key);}delete window.RAIL_NETWORK_TILES[key];};
   const loadTile=key=>{
     if(loadedTiles.has(key)||pendingTiles.has(key))return;
     if(location.protocol==='http:'||location.protocol==='https:'){
@@ -249,11 +327,10 @@ window.renderRailNetwork = function renderRailNetwork() {
     signalViews.forEach(view=>{
       const q=screenPoint(view.signal.position);
       view.group.setAttribute('transform',`translate(${q.x} ${q.y})`);
-      view.group.style.display=representedMeters()<250?'block':'none';
+      view.group.style.display=signalsVisible&&representedMeters()<250?'block':'none';
     });
   };
-  const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-  const stationTitle=station=>{const name=String(station.name||`车站 ${station.entity_id}`),base=name.endsWith('站')?name:`${name}站`,yard=stationYardLabel(station);return yard?`${base}－${yard}`:base;};
+  const stationTitle=station=>stationPreview(station);
   const stopForVehicle=vehicle=>lineById.get(vehicle.line_id)?.stops?.[vehicle.stop_index]||null;
   const vehicleStatus=vehicle=>{
     const stop=stopForVehicle(vehicle),station=stop?stationById.get(stop.station_group_id):null;
@@ -267,54 +344,254 @@ window.renderRailNetwork = function renderRailNetwork() {
     return (stationsByPlatformEdge.get(vehicle.edge_id)||[])[0]||null;
   };
   const formatSystemTime=value=>new Date(value).toLocaleString('zh-CN',{hour12:false,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const formatStationLogTime=value=>{
+    const date=new Date(value),two=part=>String(part).padStart(2,'0');
+    return `${two(date.getMonth()+1)}-${two(date.getDate())} ${two(date.getHours())}:${two(date.getMinutes())}`;
+  };
+  const workLogStatus={
+    EXECUTED:{label:'已执行',className:'applied'},
+    BLOCKED:{label:'被阻挡',className:'blocked'},
+    PENDING:{label:'待处理',className:'pending'},
+    CANCELLED:{label:'已取消',className:'cancelled'},
+    TEST:{label:'系统测试',className:'planned'},
+  };
+  const workLogActionLabels={
+    BUY_VEHICLE:'购买车辆',ASSIGN_VEHICLE_TO_LINE:'车辆分配到线路',SET_LINE_STOP_POLICY:'调整停站策略',SET_LINE_STOPS:'调整线路停靠站台',CREATE_LINE:'创建线路',CREATE_LINE_FROM_SOURCE_ROUTE:'创建线路',SELL_VEHICLE:'出售车辆',RENAME_LINE:'重命名线路',HOLD_VEHICLE:'扣停列车',HOLD_VEHICLE_AT_TERMINAL:'扣停列车',RELEASE_VEHICLE:'放行列车',TIMETABLE_PLAN_GENERATED:'运行图系统测试',
+  };
+  const workLogCategory=item=>item.category||(item.applied?'EXECUTED':'TEST');
+  const workLogTarget=item=>[Number.isInteger(item.line_id)?`线路 ${item.line_id}`:'',Number.isInteger(item.vehicle_id)?`车辆 ${item.vehicle_id}`:'',item.task_id?`任务 ${item.task_id}`:''].filter(Boolean).join(' · ')||'全路网';
+  const closeWorkLogModal=()=>{
+    if(!workLogModal)return;
+    workLogModal.remove();workLogModal=null;
+    if(workLogReturnFocus?.focus)workLogReturnFocus.focus();
+    workLogReturnFocus=null;
+  };
+  const renderWorkLogModal=()=>{
+    if(!workLogModal)return;
+    const entries=allMcpWorkLog.entries||[],counts={ALL:entries.length};
+    Object.keys(workLogStatus).forEach(category=>{counts[category]=entries.filter(item=>workLogCategory(item)===category).length;});
+    workLogModal.querySelectorAll('[data-work-log-filter]').forEach(button=>{
+      const category=button.dataset.workLogFilter,label=category==='ALL'?'全部':workLogStatus[category]?.label||category;
+      button.textContent=`${label} ${counts[category]||0}`;
+      button.classList.toggle('active',category===workLogFilter);
+      button.setAttribute('aria-pressed',String(category===workLogFilter));
+    });
+    const query=workLogSearch.trim().toLocaleLowerCase('zh-CN');
+    const visible=entries.filter(item=>(workLogFilter==='ALL'||workLogCategory(item)===workLogFilter)&&(!query||[item.summary,item.action_type,item.reason,item.line_id,item.vehicle_id,item.task_id,item.task_status].some(value=>String(value??'').toLocaleLowerCase('zh-CN').includes(query))));
+    templates.setText(workLogModal,'work-log-summary',`显示 ${visible.length} 条，共 ${entries.length} 条`);
+    const slot=templates.slot(workLogModal,'work-log-entries'),rows=[];
+    if(workLogRequestPending)rows.push(templates.message('WAIT','正在读取全部工作日志'));
+    else if(workLogLoadError)rows.push(templates.message('ERROR',workLogLoadError,true));
+    else visible.forEach(item=>{
+      const category=workLogCategory(item),meta=workLogStatus[category]||{label:category,className:'pending'};
+      const row=templates.instantiate('work-log-detail-row-template'),status=templates.setText(row,'status',meta.label);
+      status.classList.add(`status-${category.toLowerCase()}`);
+      templates.setText(row,'time',formatSystemTime(item.occurred_at*1000));
+      templates.setText(row,'summary',item.summary||workLogActionLabels[item.action_type]||item.action_type);
+      templates.setText(row,'action',workLogActionLabels[item.action_type]||item.action_type||'UNKNOWN');
+      templates.setText(row,'target',workLogTarget(item));
+      templates.setText(row,'reason',`状态依据：${item.reason||item.verification_status||item.task_status||'UNKNOWN'}`);
+      rows.push(row);
+    });
+    if(!rows.length)rows.push(templates.message('NONE','当前筛选条件下没有记录'));
+    slot.replaceChildren(...rows);
+  };
+  const openWorkLogModal=()=>{
+    if(workLogModal)return;
+    workLogReturnFocus=document.activeElement;
+    workLogFilter='ALL';workLogSearch='';workLogLoadError=null;allMcpWorkLog={entries:[]};
+    workLogModal=templates.instantiate('work-log-modal-template');
+    workLogModal.querySelectorAll('[data-action="work-log-close"]').forEach(button=>button.addEventListener('click',closeWorkLogModal));
+    workLogModal.querySelectorAll('[data-work-log-filter]').forEach(button=>button.addEventListener('click',()=>{workLogFilter=button.dataset.workLogFilter;renderWorkLogModal();}));
+    const search=workLogModal.querySelector('[data-action="work-log-search"]');
+    search.addEventListener('input',()=>{workLogSearch=search.value;renderWorkLogModal();});
+    document.body.appendChild(workLogModal);search.focus();
+    workLogRequestPending=true;renderWorkLogModal();
+    fetch('/api/mcp-work-log?limit=all',{cache:'no-store'}).then(response=>{if(!response.ok)throw new Error(`mcp-work-log: ${response.status}`);return response.json();}).then(value=>{allMcpWorkLog=value;}).catch(error=>{console.error(error);workLogLoadError='读取工作日志失败';}).finally(()=>{workLogRequestPending=false;renderWorkLogModal();});
+  };
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&workLogModal)closeWorkLogModal();});
   const stationRoutes=station=>{const ids=new Set(relatedStations(station).map(item=>item.entity_id));return p.lines.filter(line=>line.stops.some(stop=>ids.has(stop.station_group_id)));};
+  const stationServingVehicleCount=routes=>{
+    const liveCounts=new Map();
+    (liveState?.vehicles||[]).forEach(vehicle=>{
+      if(Number.isInteger(vehicle.line_id))liveCounts.set(vehicle.line_id,(liveCounts.get(vehicle.line_id)||0)+1);
+    });
+    return routes.reduce((total,line)=>{
+      const configured=operationLineById.get(line.entity_id)?.vehicle_count;
+      return total+(Number.isFinite(configured)?configured:(liveCounts.get(line.entity_id)||0));
+    },0);
+  };
+  const currentSimulationSpeedLabel=()=>{
+    const multiplier=Number(liveState?.simulation?.speed_multiplier);
+    return Number.isFinite(multiplier)?`${multiplier}x`:'?x';
+  };
   const dwellDescription=(line,station)=>{
     const ids=new Set(relatedStations(station).map(item=>item.entity_id));
     const op=operationLineById.get(line.entity_id),stops=(op?.stops||[]).filter(stop=>ids.has(stop.station_id));
     if(!stops.length)return '停留时间待采';
     return stops.map(stop=>{
-      const policy=stop.policy||{},scheduled=Number.isFinite(stop.scheduled_dwell_seconds)?`图定 ${Math.round(stop.scheduled_dwell_seconds)} 秒`:'图定待生成';
-      const min=Number.isFinite(policy.min_waiting_time)?policy.min_waiting_time:'—',max=Number.isFinite(policy.max_waiting_time)?policy.max_waiting_time:'—';
-      return `第 ${Number(stop.sequence_index)+1} 站 · ${scheduled} · 游戏策略 ${min}–${max} 秒`;
-    }).join('<br>');
+      const scheduled=Number.isFinite(stop.scheduled_dwell_seconds)?`${Math.round(stop.scheduled_dwell_seconds)}秒`:'待生成';
+      return `第${Number(stop.sequence_index)+1}站 图定停车${scheduled}(${currentSimulationSpeedLabel()})`;
+    }).join('\n');
   };
+  const $sidebarBack=$('#sidebar-back');
+  const setSidebarBackVisible=visible=>$sidebarBack.toggleClass('is-hidden',!visible);
   const renderOverviewSidebar=()=>{
-    const lineRows=p.lines.map((line,index)=>`<div class="event line-row" data-line-row="${line.entity_id}"><i style="background:${palette[index%palette.length]}"></i><em>${escapeHtml(line.name)}</em><span>${line.stops.length} 站</span></div>`).join('');
+    setSidebarBackVisible(false);
+    const sidebar=templates.instantiate('overview-sidebar-template');
+    const lineSlot=templates.slot(sidebar,'lines');
+    p.lines.forEach(line=>{
+      const row=templates.instantiate('route-row-template');
+      templates.setText(row,'name',line.name);
+      templates.setText(row,'stop-count',`${line.stops.length} 站`);
+      lineSlot.appendChild(row);
+    });
     const orderedSuggestions=[...(aiAdvice.suggestions||[])].sort((a,b)=>(Number(b.created_at)||0)-(Number(a.created_at)||0));
     const visibleSuggestions=orderedSuggestions.slice(0,aiAdviceVisibleCount);
-    const suggestionRows=visibleSuggestions.map(item=>`<div class="suggestion ${item.severity==='ACTION'?'action':''}"><time>${item.created_at?formatSystemTime(item.created_at*1000):'时间 UNKNOWN'}</time><b><em>${escapeHtml(item.template_label||item.template)}</em>${escapeHtml(item.title)}</b><span>${escapeHtml(item.reason)}<br>${escapeHtml(item.required_action)}</span></div>`).join('');
-    const moreCount=Math.max(0,orderedSuggestions.length-visibleSuggestions.length),more=moreCount?`<button class="advice-more" data-advice-more>查看更多（剩余 ${moreCount} 条）</button>`:'';
-    const suggestions=suggestionRows+more||'<div class="event"><em>CLEAR</em> 当前没有需要人工处理的运行图建议</div>';
-    const work=(mcpWorkLog.entries||[]).slice(0,12).map(item=>`<div class="work-entry"><time>${formatSystemTime(item.occurred_at*1000)}</time><span class="${item.applied?'applied':'planned'}">${item.applied?'已执行并验证':'系统测试'}</span> · ${escapeHtml(item.summary)}</div>`).join('')||'<div class="event"><em>WAIT</em> 暂无MCP调整记录</div>';
-    document.querySelector('#sidebar').innerHTML=`<div class="panel-title">AI运行图建议</div><div class="section ai-suggestions">${suggestions}</div><div class="panel-title">MCP工作日志</div><div class="section mcp-log">${work}</div><div class="panel-title">铁路线路（点击突出）</div><div class="section line-list">${lineRows}</div>`;
-    document.querySelectorAll('[data-line-row]').forEach(row=>row.addEventListener('click',()=>selectLine(Number(row.dataset.lineRow))));
-    const moreButton=document.querySelector('[data-advice-more]');if(moreButton)moreButton.addEventListener('click',()=>{aiAdviceVisibleCount+=10;renderOverviewSidebar();});
+    const suggestionSlot=templates.slot(sidebar,'suggestions');
+    visibleSuggestions.forEach(item=>{
+      const row=templates.instantiate('suggestion-row-template');
+      if(item.severity==='ACTION')row.classList.add('action');
+      templates.setText(row,'time',item.created_at?formatSystemTime(item.created_at*1000):'时间 UNKNOWN');
+      templates.setText(row,'label',item.template_label||item.template);
+      templates.setText(row,'title',item.title);
+      templates.setText(row,'detail',[item.reason,item.required_action].filter(Boolean).join('\n'));
+      suggestionSlot.appendChild(row);
+    });
+    const moreCount=Math.max(0,orderedSuggestions.length-visibleSuggestions.length);
+    if(moreCount){
+      const more=templates.instantiate('advice-more-template');
+      more.textContent=`查看更多（剩余 ${moreCount} 条）`;
+      more.addEventListener('click',()=>{aiAdviceVisibleCount+=10;renderOverviewSidebar();});
+      suggestionSlot.appendChild(more);
+    }else if(!visibleSuggestions.length){
+      suggestionSlot.appendChild(templates.message('CLEAR','当前没有需要人工处理的运行图建议'));
+    }
+    const workSlot=templates.slot(sidebar,'work-log'),entries=(mcpWorkLog.entries||[]).slice(0,12);
+    entries.forEach(item=>{
+      const category=workLogCategory(item),meta=workLogStatus[category]||{label:category,className:'planned'};
+      const row=templates.instantiate('work-entry-template'),result=templates.setText(row,'result',meta.label);
+      result.classList.add(meta.className);
+      templates.setText(row,'time',formatSystemTime(item.occurred_at*1000));
+      templates.setText(row,'summary',item.summary);
+      workSlot.appendChild(row);
+    });
+    if(!entries.length)workSlot.appendChild(templates.message('WAIT','暂无MCP调整记录'));
+    sidebar.querySelector('[data-action="work-log-all"]').addEventListener('click',openWorkLogModal);
+    document.querySelector('#sidebar').replaceChildren(sidebar);
   };
   const returnToOverview=()=>{selectedStation=null;selectedVehicleId=null;vehicleDetail=null;stationLogRows=[];document.querySelector('#station-name').textContent='全路网';renderOverviewSidebar();updateStations();};
-  const detailToolbar=()=>'<div class="detail-toolbar"><button class="detail-back" data-sidebar-back>← 返回全路网</button></div>';
-  const bindDetailBack=()=>{const button=document.querySelector('[data-sidebar-back]');if(button)button.addEventListener('click',returnToOverview);};
+  $sidebarBack.off('.sidebarBack').on('click.sidebarBack',returnToOverview);
+  const stationFacilityKind=groups=>{
+    const kinds=groups.map(group=>{const terminals=group.terminals||[];return {passenger:terminals.some(terminal=>!terminal.cargo),cargo:terminals.some(terminal=>terminal.cargo)};});
+    const passenger=kinds.some(kind=>kind.passenger),cargo=kinds.some(kind=>kind.cargo);
+    if(passenger&&cargo)return kinds.some(kind=>kind.passenger&&kind.cargo)?'客货混用车站':'客货车站';
+    return passenger?'客运车站':cargo?'货运车站':'未知车站';
+  };
+  const stationSidebarData=station=>{
+    const groups=relatedStations(station),groupIds=new Set(groups.map(item=>item.entity_id)),routes=stationRoutes(station);
+    const vehicles=(liveState?.vehicles||[]).filter(vehicle=>groupIds.has(stationForVehicle(vehicle)?.entity_id)||(vehicle.raw_state===2&&groupIds.has(stopForVehicle(vehicle)?.station_group_id)));
+    const platforms=groups.flatMap(physicalPlatforms);
+    const platformFaces=platforms.reduce((total,platform)=>total+Math.max(1,(platform.terminal_faces||[]).length),0);
+    return {groups,routes,vehicles,platforms,platformFaces,summary:`${stationFacilityKind(groups)} ${platformFaces}站台`,servingVehicles:stationServingVehicleCount(routes)};
+  };
+  const fillStationRoutes=(slot,station,routes)=>{
+    const rows=routes.map(line=>{const row=templates.instantiate('station-route-row-template');templates.setText(row,'name',line.name);templates.setText(row,'dwell',dwellDescription(line,station));return row;});
+    if(!rows.length)rows.push(templates.message('NONE','当前没有线路办理停靠',true));
+    slot.replaceChildren(...rows);
+  };
+  const fillStationLiveVehicles=(slot,vehicles)=>{
+    const rows=vehicles.map(vehicle=>{
+      const row=templates.instantiate('station-live-vehicle-row-template');
+      row.dataset.vehicleId=vehicle.entity_id;
+      templates.setText(row,'name',vehicle.name||`列车${vehicle.entity_id}`);
+      templates.setText(row,'motion',`${Math.round(vehicle.speed_kmh??0)} km/h · ${vehicleStatus(vehicle)}`);
+      row.addEventListener('click',()=>{selectedStation=null;selectedVehicleId=Number(row.dataset.vehicleId);vehicleDetail=null;vehicleDetailLoadedAt=0;renderVehicleSidebar();loadVehicleDetail();updateStations();});
+      return row;
+    });
+    if(!rows.length)rows.push(templates.message('CLEAR','当前站界内无列车'));
+    slot.replaceChildren(...rows);
+  };
+  const stationLogKey=item=>[item.observed_at,item.line_id,item.vehicle_id??item.vehicle_name,item.event_type].join(':');
+  const fillStationLogs=slot=>{
+    const previousTop=slot.scrollTop;
+    const anchor=[...slot.children].find(row=>row.offsetTop+row.offsetHeight>previousTop);
+    const anchorKey=anchor?.dataset.logKey,anchorOffset=anchor?anchor.offsetTop-previousTop:0;
+    const rows=stationLogRows.map(item=>{const row=templates.instantiate('station-log-row-template');row.dataset.logKey=stationLogKey(item);if(item.event_type==='PASS')row.classList.add('warn');templates.setText(row,'time',formatStationLogTime(item.observed_at*1000));templates.setText(row,'event',`${item.line_name} ${item.vehicle_name} ${item.event_type==='STOP'?'停靠':'跨站'}`);return row;});
+    if(!rows.length)rows.push(templates.message('WAIT','暂无已记录的到发事件'));
+    slot.replaceChildren(...rows);
+    if(previousTop<=1){slot.scrollTop=previousTop;return;}
+    const nextAnchor=anchorKey?[...slot.children].find(row=>row.dataset.logKey===anchorKey):null;
+    slot.scrollTop=nextAnchor?nextAnchor.offsetTop-anchorOffset:Math.min(previousTop,Math.max(0,slot.scrollHeight-slot.clientHeight));
+  };
+  const currentStationSidebar=()=>document.querySelector('#sidebar > .station-sidebar');
+  const refreshStationLiveSidebar=()=>{
+    if(!selectedStation)return;
+    const sidebar=currentStationSidebar();
+    if(!sidebar){renderStationSidebar();return;}
+    const data=stationSidebarData(selectedStation);
+    templates.setText(sidebar,'serving-vehicles',`图定停靠 ${data.servingVehicles} 趟列车`);
+    fillStationLiveVehicles(templates.slot(sidebar,'live-vehicles'),data.vehicles);
+    const speedLabel=currentSimulationSpeedLabel();
+    if(sidebar.dataset.dwellSpeed!==speedLabel){fillStationRoutes(templates.slot(sidebar,'routes'),selectedStation,data.routes);sidebar.dataset.dwellSpeed=speedLabel;}
+  };
+  const refreshStationOperationsSidebar=()=>{
+    if(!selectedStation)return;
+    const sidebar=currentStationSidebar();
+    if(!sidebar){renderStationSidebar();return;}
+    const data=stationSidebarData(selectedStation),title=stationTitle(selectedStation);
+    templates.setText(sidebar,'station-name',title);
+    templates.setText(sidebar,'station-summary',data.summary);
+    templates.setText(sidebar,'serving-vehicles',`图定停靠 ${data.servingVehicles} 趟列车`);
+    fillStationRoutes(templates.slot(sidebar,'routes'),selectedStation,data.routes);
+    sidebar.dataset.dwellSpeed=currentSimulationSpeedLabel();
+    document.querySelector('#station-name').textContent=title;
+  };
+  const refreshStationLogSidebar=()=>{
+    if(!selectedStation)return;
+    const sidebar=currentStationSidebar();
+    if(!sidebar){renderStationSidebar();return;}
+    fillStationLogs(templates.slot(sidebar,'logs'));
+  };
   const renderStationSidebar=()=>{
     if(!selectedStation){renderOverviewSidebar();return;}
-    const station=selectedStation,groups=relatedStations(station),groupIds=new Set(groups.map(item=>item.entity_id)),routes=stationRoutes(station);
-    const vehicles=(liveState?.vehicles||[]).filter(vehicle=>groupIds.has(stationForVehicle(vehicle)?.entity_id)||(vehicle.raw_state===2&&groupIds.has(stopForVehicle(vehicle)?.station_group_id)));
-    const routeRows=routes.map(line=>`<div class="station-route" data-line-row="${line.entity_id}"><div><i style="background:${lineColor.get(line.entity_id)}"></i><b>${escapeHtml(line.name)}</b></div><span>${dwellDescription(line,station)}</span></div>`).join('')||'<div class="event warn"><em>NONE</em> 当前没有线路办理停靠</div>';
-    const liveRows=vehicles.map(vehicle=>`<div class="event line-row" data-vehicle-row="${vehicle.entity_id}"><em>${escapeHtml(vehicle.name||`列车${vehicle.entity_id}`)}</em> ${Math.round(vehicle.speed_kmh??0)} km/h · ${escapeHtml(vehicleStatus(vehicle))}</div>`).join('')||'<div class="event"><em>CLEAR</em> 当前站界内无列车</div>';
-    const logs=stationLogRows.map(item=>`<div class="event ${item.event_type==='PASS'?'warn':''}"><em>${formatSystemTime(item.observed_at*1000)}</em> ${escapeHtml(item.line_name)} ${item.event_type==='STOP'?'停靠':'跨站'} · ${escapeHtml(item.vehicle_name)}</div>`).join('')||'<div class="event"><em>WAIT</em> 暂无已记录的到发事件</div>';
-    const terminals=groups.flatMap(item=>item.terminals||[]),kinds=terminals.reduce((result,item)=>{result[item.cargo?'货运':'客运']=(result[item.cargo?'货运':'客运']||0)+1;return result;},{});
-    document.querySelector('#sidebar').innerHTML=`${detailToolbar()}<div class="panel-title">${escapeHtml(stationTitle(station))} · 运行信息</div><div class="section"><div class="kv"><span>站台</span><b>${terminals.length}</b></div><div class="kv"><span>属性</span><b>${Object.entries(kinds).map(([key,count])=>`${key} ${count}`).join(' / ')||'UNKNOWN'}</b></div><div class="kv"><span>接入线路</span><b>${routes.length}</b></div></div><div class="panel-title">当前站界</div><div class="section">${liveRows}</div><div class="panel-title">接入线路与本站停留</div><div class="section">${routeRows}</div><div class="panel-title">车站日志</div><div class="section station-log">${logs}</div>`;
-    bindDetailBack();
-    document.querySelectorAll('[data-line-row]').forEach(row=>row.addEventListener('click',()=>selectLine(Number(row.dataset.lineRow))));
-    document.querySelectorAll('[data-vehicle-row]').forEach(row=>row.addEventListener('click',()=>{selectedStation=null;selectedVehicleId=Number(row.dataset.vehicleRow);vehicleDetail=null;vehicleDetailLoadedAt=0;renderVehicleSidebar();loadVehicleDetail();updateStations();}));
+    setSidebarBackVisible(true);
+    const station=selectedStation,{routes,vehicles,summary,servingVehicles}=stationSidebarData(station);
+    const sidebar=templates.instantiate('station-sidebar-template');
+    templates.setText(sidebar,'station-name',stationTitle(station));
+    templates.setText(sidebar,'station-summary',summary);
+    templates.setText(sidebar,'serving-vehicles',`图定停靠 ${servingVehicles} 趟列车`);
+    fillStationRoutes(templates.slot(sidebar,'routes'),station,routes);
+    sidebar.dataset.dwellSpeed=currentSimulationSpeedLabel();
+    fillStationLiveVehicles(templates.slot(sidebar,'live-vehicles'),vehicles);
+    fillStationLogs(templates.slot(sidebar,'logs'));
+    document.querySelector('#sidebar').replaceChildren(sidebar);
     document.querySelector('#station-name').textContent=stationTitle(station);
   };
   const renderVehicleSidebar=()=>{
     if(selectedVehicleId==null){renderOverviewSidebar();return;}
+    setSidebarBackVisible(true);
     const live=(liveState?.vehicles||[]).find(item=>item.entity_id===selectedVehicleId)||{},detail=vehicleDetail||{},vehicle=detail.vehicle||{},load=detail.load||{},next=detail.next_stop||{};
     const name=live.name||vehicle.name||`列车${selectedVehicleId}`,line=lineById.get(live.line_id??vehicle.line_id),speed=live.speed_kmh??detail.motion?.speed_kmh;
     const loadText=vehicleDetailPending&&!vehicleDetail?'读取中…':load.total==null?'UNKNOWN':`${load.total} / ${load.capacity??'—'}`;
-    const cargoRows=(load.cargo_by_type||[]).map(item=>`<div class="kv"><span>${escapeHtml(item.cargo_name||`货物 ${item.cargo_id}`)}</span><b>${item.amount}</b></div>`).join('');
-    document.querySelector('#sidebar').innerHTML=`${detailToolbar()}<div class="panel-title">${escapeHtml(name)} · 列车运行信息</div><div class="section"><div class="kv"><span>列车 ID</span><b>${selectedVehicleId}</b></div><div class="kv"><span>所属线路</span><b>${escapeHtml(line?.name||vehicle.line_name||'UNKNOWN')}</b></div><div class="kv"><span>当前速度</span><b>${speed==null?'UNKNOWN':`${Math.round(speed)} km/h`}</b></div><div class="kv"><span>运行状态</span><b>${escapeHtml(vehicleStatus({...live,line_id:live.line_id??vehicle.line_id}))}</b></div><div class="kv"><span>下一站</span><b>${escapeHtml(next.station_name||stopForVehicle(live)?.station_group_name||'UNKNOWN')}</b></div></div><div class="panel-title">当前装载</div><div class="section vehicle-load"><div class="kv"><span>总装载 / 容量</span><b>${loadText}</b></div><div class="kv"><span>旅客</span><b>${load.passengers??'—'}</b></div><div class="kv"><span>货物</span><b>${load.cargo??'—'}</b></div>${cargoRows||''}${detail.availability?.load===false?'<div class="event warn"><em>UNKNOWN</em> 当前装载数据暂不可用</div>':''}</div><div class="panel-title">位置与控制</div><div class="section"><div class="kv"><span>区间</span><b>${escapeHtml(live.block_id||detail.motion?.block_id||'UNKNOWN')}</b></div><div class="kv"><span>位置来源</span><b>${escapeHtml(live.position_source||'UNKNOWN')}</b></div><div class="kv"><span>定位保持</span><b>${live.position_stale?'是':'否'}</b></div></div>`;
-    bindDetailBack();document.querySelector('#station-name').textContent=name;
+    const sidebar=templates.instantiate('vehicle-sidebar-template');
+    templates.setText(sidebar,'vehicle-name',name);
+    templates.setText(sidebar,'vehicle-id',selectedVehicleId);
+    templates.setText(sidebar,'line-name',line?.name||vehicle.line_name||'UNKNOWN');
+    templates.setText(sidebar,'speed',speed==null?'UNKNOWN':`${Math.round(speed)} km/h`);
+    templates.setText(sidebar,'status',vehicleStatus({...live,line_id:live.line_id??vehicle.line_id}));
+    templates.setText(sidebar,'next-station',next.station_name||stopForVehicle(live)?.station_group_name||'UNKNOWN');
+    templates.setText(sidebar,'total-load',loadText);
+    templates.setText(sidebar,'passengers',load.passengers??'—');
+    templates.setText(sidebar,'cargo',load.cargo??'—');
+    templates.setText(sidebar,'block',live.block_id||detail.motion?.block_id||'UNKNOWN');
+    templates.setText(sidebar,'position-source',live.position_source||'UNKNOWN');
+    templates.setText(sidebar,'position-stale',live.position_stale?'是':'否');
+    const cargoSlot=templates.slot(sidebar,'cargo-types');
+    (load.cargo_by_type||[]).forEach(item=>{const row=templates.instantiate('cargo-row-template');templates.setText(row,'cargo-name',item.cargo_name||`货物 ${item.cargo_id}`);templates.setText(row,'amount',item.amount);cargoSlot.appendChild(row);});
+    if(detail.availability?.load===false)templates.slot(sidebar,'load-status').appendChild(templates.message('UNKNOWN','当前装载数据暂不可用',true));
+    document.querySelector('#sidebar').replaceChildren(sidebar);
+    document.querySelector('#station-name').textContent=name;
   };
   const loadVehicleDetail=()=>{
     if(selectedVehicleId==null||vehicleDetailPending||Date.now()-vehicleDetailLoadedAt<5000||!(location.protocol==='http:'||location.protocol==='https:'))return;
@@ -324,19 +601,23 @@ window.renderRailNetwork = function renderRailNetwork() {
   const loadStationLogs=()=>{
     if(!selectedStation||stationLogRequestPending||!(location.protocol==='http:'||location.protocol==='https:'))return;
     const requestedId=selectedStation.entity_id,ids=relatedStations(selectedStation).map(item=>item.entity_id);stationLogRequestPending=true;
-    Promise.all(ids.map(id=>fetch(`/api/station-logs/${id}?limit=100`,{cache:'no-store'}).then(response=>{if(!response.ok)throw new Error(`station-logs: ${response.status}`);return response.json();}))).then(values=>{if(selectedStation?.entity_id!==requestedId)return;stationLogRows=values.flatMap(value=>value.events||[]).sort((a,b)=>b.observed_at-a.observed_at).slice(0,100);renderStationSidebar();}).catch(error=>console.error(error)).finally(()=>{stationLogRequestPending=false;});
+    Promise.all(ids.map(id=>fetch(`/api/station-logs/${id}?limit=100`,{cache:'no-store'}).then(response=>{if(!response.ok)throw new Error(`station-logs: ${response.status}`);return response.json();}))).then(values=>{if(selectedStation?.entity_id!==requestedId)return;stationLogRows=values.flatMap(value=>value.events||[]).sort((a,b)=>b.observed_at-a.observed_at).slice(0,100);refreshStationLogSidebar();}).catch(error=>console.error(error)).finally(()=>{stationLogRequestPending=false;});
   };
   const reconcileLive=value=>{
-    liveState=value;
+    const hasVehicles=Object.prototype.hasOwnProperty.call(value,'vehicles');
+    if(hasVehicles)liveState=value;
     if(value.simulation){
       const simulation=value.simulation,multiplier=Number(simulation.speed_multiplier),clock=document.querySelector('.clock');
       if(clock){
-        if(simulation.status==='PAUSED'||simulation.status==='PAUSED_OR_STALLED')clock.textContent='已暂停';
-        else if((simulation.status==='RUNNING'||simulation.status==='RUNNING_INFERRED')&&Number.isFinite(multiplier))clock.textContent=`运行 ${multiplier}×`;
-        else clock.textContent='运行状态 UNKNOWN';
+        const clockText=simulation.status==='PAUSED'||simulation.status==='PAUSED_OR_STALLED'
+          ?'已暂停'
+          :(simulation.status==='RUNNING'||simulation.status==='RUNNING_INFERRED')&&Number.isFinite(multiplier)
+            ?`运行中 ${multiplier}×`
+            :'运行状态 UNKNOWN';
+        if(clock.textContent!==clockText)clock.textContent=clockText;
       }
     }
-    if(Object.prototype.hasOwnProperty.call(value,'vehicles')){
+    if(hasVehicles){
      const sampleAt=Number(value.sampled_at)||performance.now()/1000;
      const isNewFrame=lastVehicleSampleAt==null||sampleAt>lastVehicleSampleAt;
      const activeTrains=new Set((value.vehicles||[]).map(vehicle=>vehicle.entity_id));
@@ -380,20 +661,14 @@ window.renderRailNetwork = function renderRailNetwork() {
      });
     }
     updateLivePositions();
-    if(selectedStation)renderStationSidebar();else if(selectedVehicleId!=null){renderVehicleSidebar();loadVehicleDetail();}
-    const summary=document.querySelector('#live-summary');
-    if(summary&&Object.prototype.hasOwnProperty.call(value,'line_diagnostics')){
-      const warnings=(value.line_diagnostics||[]).filter(item=>item.diagnosis==='POSSIBLE_BUNCHING'||item.diagnosis==='UNEVEN_SPACING').sort((a,b)=>(a.minimum_spacing_m??1e12)-(b.minimum_spacing_m??1e12)).slice(0,8);
-      summary.innerHTML=`<div class="kv"><span>在线铁路车辆</span><b>${value.counts?.rail_vehicles??0}</b></div><div class="kv"><span>隧道/边界位置保持</span><b>${value.counts?.position_fallback_vehicles??0}</b></div><div class="kv"><span>控制设备候选 / 已确认</span><b>${value.counts?.signal_candidates??0} / ${value.counts?.confirmed_signals??0}</b></div><div class="kv"><span>控制区间 / 占用</span><b>${value.counts?.blocks??0} / ${value.counts?.occupied_blocks??0}</b></div>${warnings.map(item=>`<div class="event warn"><em>${item.diagnosis}</em> ${item.name} · 最小间隔 ${item.minimum_spacing_m??'—'} m</div>`).join('')||'<div class="event"><em>NORMAL</em> 暂无可证实的间隔告警</div>'}`;
-    }
-    const liveLamp=document.querySelector('#live-lamp');if(liveLamp){liveLamp.classList.remove('amber','red');liveLamp.classList.add('green');}
+    if(selectedStation&&hasVehicles)refreshStationLiveSidebar();else if(selectedVehicleId!=null&&hasVehicles){renderVehicleSidebar();loadVehicleDetail();}
   };
   const updateViewport=()=>{
     mapLayer.setAttribute('transform',`translate(${panX} ${panY}) translate(600 360) scale(${zoom}) translate(-600 -360)`);
     document.querySelector('#zoom-value').textContent=`${Math.round(zoom*100)}%`;
     document.querySelector('#zoom-out').disabled=zoom<=1+1e-9;
     scaleText.textContent=formatDistance(representedMeters());
-    applyLineStyles();
+    updateMapDetailVisibility();
     updateStations();
     updateLivePositions();
     updateTiles();
@@ -414,31 +689,43 @@ window.renderRailNetwork = function renderRailNetwork() {
   svg.addEventListener('pointerup',stopDrag);svg.addEventListener('pointercancel',stopDrag);svg.addEventListener('lostpointercapture',()=>stopDrag());window.addEventListener('blur',()=>stopDrag());
   svg.addEventListener('click',event=>{if(suppressClick){event.preventDefault();event.stopImmediatePropagation();suppressClick=false;}},true);
 
-  const selectLine=lineId=>{selectedLine=selectedLine===lineId?null:lineId;applyLineStyles();document.querySelectorAll('[data-line-row]').forEach(row=>row.classList.toggle('active-line',Number(row.dataset.lineRow)===selectedLine));};
-  linePaths.forEach((path,id)=>{const line=p.lines.find(item=>item.entity_id===id);path.addEventListener('pointerenter',event=>{tooltip.textContent=line.name;tooltip.style.display='block';moveTooltip(event);});path.addEventListener('pointermove',moveTooltip);path.addEventListener('pointerleave',()=>{tooltip.style.display='none';});path.addEventListener('click',()=>selectLine(id));});
   renderOverviewSidebar();
   document.querySelector('#station-name').textContent='全路网';
   document.querySelector('#snapshot').textContent=`${p.counts.stations} STATIONS / ${p.counts.lines} LINES`;
   document.querySelector('.mode').textContent='NETWORK CONTROL · DYNAMIC';
-  document.querySelector('.watermark').textContent='GLOBAL PHYSICAL RAIL GRAPH · 游戏引擎原始坐标';
+  document.querySelector('.watermark').textContent='Powered By BlackIce.';
   document.querySelector('.clock').textContent='STATIC';
-  document.querySelector('#footer-info').textContent='列车采用 MOVE_PATH.dyn 原始位置，每 0.5 秒点动刷新；信号由 SIGNAL_LIST 确认，灯色与需求为 UNKNOWN';
-  if((location.protocol==='http:'||location.protocol==='https:')&&window.EventSource){
-    const generation=p.generated_at;
-    const events=new EventSource('/api/events');
-    events.addEventListener('status',event=>{
-      const status=JSON.parse(event.data),mode=document.querySelector('.mode'),lamp=document.querySelector('footer .lamp');
-      mode.textContent=status.bridge_connected?'NETWORK CONTROL · LIVE':'NETWORK CONTROL · OFFLINE';
-      if(lamp){lamp.classList.toggle('green',status.bridge_connected);lamp.classList.toggle('red',!status.bridge_connected);}
-      document.querySelector('#snapshot').textContent=`${p.counts.stations} STATIONS / ${p.counts.lines} LINES · SEQ ${status.snapshot_sequence??'—'}`;
-      if(status.rail_generation&&status.rail_generation!==generation)location.reload();
-    });
-  }
+  $('#footer-info').text('列车位置刷新时间: 0.5s');
+  const $signalToggle=$('#toggle-signals');
+  $signalToggle.prop('hidden',false).attr('aria-pressed','true').on('click',()=>{
+    signalsVisible=!signalsVisible;
+    $signalToggle.attr('aria-pressed',String(signalsVisible)).text(signalsVisible?'隐藏信号机':'显示信号机');
+    updateLivePositions();
+  });
+  const generation=p.generated_at;
+  let reloadRequested=false;
+  const handleStatus=status=>{
+    const mode=document.querySelector('.mode');
+    mode.textContent=status.bridge_connected?'NETWORK CONTROL · LIVE':'NETWORK CONTROL · OFFLINE';
+    document.querySelector('#snapshot').textContent=`${p.counts.stations} STATIONS / ${p.counts.lines} LINES · SEQ ${status.snapshot_sequence??'—'}`;
+    const saveReady=!status.save_transition&&status.save_id&&status.rail_save_id===status.save_id;
+    const mapChanged=(status.rail_generation&&String(status.rail_generation)!==String(generation))||(p.save_id&&p.save_id!==status.save_id);
+    if(saveReady&&mapChanged&&!reloadRequested){
+      reloadRequested=true;
+      const target=new URL(location.href),nextGeneration=String(status.rail_generation||'');
+      if(target.searchParams.get('_rail')!==nextGeneration){target.searchParams.set('_rail',nextGeneration);location.replace(target.href);}
+    }
+  };
+  window.addEventListener('rail-map-status',event=>handleStatus(event.detail));
+  if(window.RAIL_MAP_STATUS)handleStatus(window.RAIL_MAP_STATUS);
   if(location.protocol==='http:'||location.protocol==='https:'){
     let liveRequestPending=false;
     const pollLive=()=>{if(liveRequestPending)return;liveRequestPending=true;fetch('/api/live',{cache:'no-store'}).then(response=>{if(!response.ok)throw new Error(`live: ${response.status}`);return response.json();}).then(reconcileLive).catch(()=>{}).finally(()=>{liveRequestPending=false;});};
     const pollControl=()=>fetch('/api/control',{cache:'no-store'}).then(response=>{if(!response.ok)throw new Error(`control: ${response.status}`);return response.json();}).then(reconcileLive).catch(()=>{});
-    fetch('/api/operations-context',{cache:'no-store'}).then(response=>{if(!response.ok)throw new Error(`operations-context: ${response.status}`);return response.json();}).then(value=>{operationsContext=value;operationLineById.clear();(value.lines||[]).forEach(line=>operationLineById.set(line.line_id,line));if(selectedStation)renderStationSidebar();}).catch(error=>console.error(error));
+    let operationsRequestPending=false;
+    const pollOperationsContext=()=>{if(operationsRequestPending)return;operationsRequestPending=true;fetch('/api/operations-context',{cache:'no-store'}).then(response=>{if(!response.ok)throw new Error(`operations-context: ${response.status}`);return response.json();}).then(value=>{operationsContext=value;operationLineById.clear();(value.lines||[]).forEach(line=>operationLineById.set(line.line_id,line));if(selectedStation)refreshStationOperationsSidebar();}).catch(error=>console.error(error)).finally(()=>{operationsRequestPending=false;});};
+    pollOperationsContext();
+    setInterval(pollOperationsContext,10000);
     const pollAdvice=()=>Promise.all([
       fetch('/api/ai-suggestions',{cache:'no-store'}).then(response=>{if(!response.ok)throw new Error(`ai-suggestions: ${response.status}`);return response.json();}),
       fetch('/api/mcp-work-log?limit=30',{cache:'no-store'}).then(response=>{if(!response.ok)throw new Error(`mcp-work-log: ${response.status}`);return response.json();})

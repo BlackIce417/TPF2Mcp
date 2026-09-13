@@ -1,0 +1,31 @@
+<template id="timetable-summary-template">
+    <div class="timetable-summary">
+        <div><b data-field="planned-lines"></b> 条线路</div>
+        <div class="ok">消除站场冲突 <span data-field="conflicts-removed"></span></div>
+        <div class="warn">区间精排待实测</div>
+    </div>
+</template>
+
+<template id="timetable-line-detail-template">
+    <div class="timetable-line-detail">
+        <b data-field="line-name"></b>
+        <div><span data-field="service-class"></span> · 图定运行速度 <span data-field="schedule-speed"></span> km/h</div>
+        <div>车底上限 <span data-field="consist-speed"></span> · 线路最低限速 <span data-field="infrastructure-speed"></span> km/h</div>
+        <div>最长编组 <span data-field="longest-train"></span> m · 站台适配 <span data-field="platform-status"></span></div>
+        <div><span data-field="vehicle-count"></span> 组车 · 间隔 <span data-field="headway"></span> · 周期 <span data-field="cycle"></span></div>
+        <div>全局移位 <span data-field="phase-shift"></span>s</div>
+        <div>站场冲突 <span data-field="conflicts-before"></span> → <span class="ok" data-field="conflicts-after"></span></div>
+        <div class="warn">当前未启用；区间占用时分仍待实测收敛</div>
+    </div>
+</template>
+
+<template id="timetable-line-row-template">
+    <button class="line" type="button">
+        <span data-field="line-name"></span>
+        <small data-field="summary"></small>
+    </button>
+</template>
+
+<template id="timetable-error-template">
+    <span class="warn">运行图载入失败：<span data-field="message"></span></span>
+</template>

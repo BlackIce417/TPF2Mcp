@@ -25,3 +25,16 @@ class FleetPolicyTests(unittest.TestCase):
         value = self.sample(200, 200, 1000)
         value["passengers"]["truncated"] = True
         self.assertEqual(evaluate_fleet_adjustment(self.plan, [value] * 6, 200)["decision"], "INSUFFICIENT_DATA")
+
+    def test_falling_backlog_at_low_load_holds_fleet_while_service_recovers(self):
+        values = [self.sample(100, waiting, 900) for waiting in (300, 220, 180)]
+
+        result = evaluate_fleet_adjustment(self.plan, values, 200)
+
+        self.assertEqual("HOLD_FLEET", result["decision"])
+        self.assertEqual("WAITING_BACKLOG_RECOVERING", result["hold_reason"])
+
+    def test_falling_backlog_does_not_hide_saturated_trains(self):
+        values = [self.sample(190, waiting, 900) for waiting in (300, 220, 180)]
+
+        self.assertEqual("ADD_ONE_PROPOSAL", evaluate_fleet_adjustment(self.plan, values, 200)["decision"])

@@ -1,0 +1,36 @@
+<template id="station-sidebar-template">
+    <div class="sidebar-view station-sidebar">
+        <div class="panel-title"><span data-field="station-name"></span></div>
+        <div class="section">
+            <div class="kv"><b data-field="station-summary"></b></div>
+            <div class="kv"><span>车辆服务</span><b data-field="serving-vehicles"></b></div>
+        </div>
+        <div class="panel-title">当前站界</div>
+        <div class="section" data-slot="live-vehicles"></div>
+        <div class="panel-title">本站车次</div>
+        <div class="section" data-slot="routes"></div>
+        <div class="panel-title">车站日志</div>
+        <div class="section station-log" data-slot="logs"></div>
+    </div>
+</template>
+
+<template id="station-route-row-template">
+    <div class="station-route">
+        <div><b data-field="name"></b></div>
+        <span data-field="dwell"></span>
+    </div>
+</template>
+
+<template id="station-live-vehicle-row-template">
+    <button class="event line-row vehicle-row" type="button" data-action="vehicle-detail">
+        <em data-field="name"></em>
+        <span data-field="motion"></span>
+    </button>
+</template>
+
+<template id="station-log-row-template">
+    <div class="event">
+        <em data-field="time"></em>
+        <span data-field="event"></span>
+    </div>
+</template>

@@ -1,18 +1,66 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TPF2 CTC 调度台原型</title>
-<style>
-:root{font-family:"Segoe UI","Microsoft YaHei",sans-serif;color:#dce7f5;background:#050a11}*{box-sizing:border-box}body{margin:0;min-width:1180px;min-height:100vh;background:#050a11;overflow:hidden}
-header{height:58px;background:linear-gradient(#1a2a3c,#101a27);border-bottom:1px solid #3c5168;display:flex;align-items:center;padding:0 18px;gap:18px;box-shadow:0 2px 12px #0009}.brand{font-weight:800;font-size:17px;letter-spacing:1px;color:#f0f6ff}.brand b{color:#38d6ff}.sep{height:28px;width:1px;background:#3d536b}.station{font-size:19px;font-weight:700}.meta{font:12px Consolas;color:#8095aa}.spacer{flex:1}.mode{padding:7px 12px;border:1px solid #2e87a5;background:#092e3b;color:#54e4ff;border-radius:2px;font:12px Consolas}.clock{font:20px Consolas;color:#9af7bf}
-.workspace{display:grid;grid-template-columns:64px 1fr 310px;height:calc(100vh - 94px)}nav{background:#0c141f;border-right:1px solid #26384a;padding:10px 7px;display:flex;flex-direction:column;gap:7px}nav button{height:50px;background:#121f2d;border:1px solid #2d4156;color:#92a6bb;border-radius:3px;font-size:10px;cursor:default}nav button.active{border-color:#32bce1;color:#4bdcff;background:#0d2b38}
-#board-wrap{position:relative;background-color:#070c12;background-image:linear-gradient(#101923 1px,transparent 1px),linear-gradient(90deg,#101923 1px,transparent 1px);background-size:20px 20px;overflow:hidden;overscroll-behavior:none}#rail-webgl{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}#board{position:relative;z-index:1;width:100%;height:100%;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;-webkit-user-drag:none}#board *{user-select:none;-webkit-user-select:none;-webkit-user-drag:none}#board.dragging{cursor:grabbing}.watermark{position:absolute;right:18px;top:14px;color:#557084;font:11px Consolas;letter-spacing:.6px}.map-controls{position:absolute;left:16px;top:14px;display:flex;align-items:center;gap:5px;padding:5px;background:#09131ee6;border:1px solid #31495e;border-radius:3px;box-shadow:0 3px 12px #0008;z-index:2}.map-controls button{width:30px;height:28px;border:1px solid #3a6178;background:#102535;color:#7ee6ff;border-radius:2px;font:16px Consolas;cursor:pointer}.map-controls button:hover{background:#17384c}.map-controls .reset,.map-controls .view{width:auto;padding:0 9px;font-size:11px}.map-controls .view.selected{background:#15506a;color:#d7f8ff;border-color:#43c8ef}.zoom-value{min-width:45px;text-align:center;color:#a9bdcf;font:11px Consolas}.track-tooltip{position:absolute;display:none;pointer-events:none;padding:4px 7px;border:1px solid #55dfff;background:#07131ee8;color:#eaf9ff;border-radius:2px;font:11px Consolas;box-shadow:0 2px 8px #000b;z-index:5}.line-row{display:grid;grid-template-columns:12px 1fr auto;gap:5px;cursor:pointer}.line-row i{width:8px;height:8px;margin-top:3px;border-radius:50%}.line-row span{color:#758da2}.line-row.active-line{background:#173144}.line-list{max-height:390px;overflow:auto}
-aside{background:#0c141e;border-left:1px solid #2c4053;overflow:auto}.panel-title{height:38px;padding:10px 13px;background:#142232;border-bottom:1px solid #30455a;font-size:12px;font-weight:700;color:#68dfff}.section{padding:12px;border-bottom:1px solid #243547}.kv{display:grid;grid-template-columns:1fr auto;gap:7px;font-size:11px;margin-bottom:7px}.kv span{color:#8093a7}.kv b{font-family:Consolas;color:#e1ebf5}.unknown{color:#ffbd52!important}table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:7px 4px;border-bottom:1px solid #233446;text-align:left}th{color:#71869b}td{color:#c7d3df}.line-chip{display:inline-block;width:7px;height:7px;margin-right:5px}.event{padding:7px 0;border-bottom:1px dashed #27394b;font:10px/1.4 Consolas;color:#9aabbc}.event em{font-style:normal;color:#50dfa1}.event.warn em{color:#ffbd52}
-footer{height:36px;background:#111b28;border-top:1px solid #304459;display:flex;align-items:center;padding:0 14px;gap:22px;font:10px Consolas;color:#91a3b5}.lamp{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}.green{background:#23e58b;box-shadow:0 0 7px #23e58b}.red{background:#ff4d5e;box-shadow:0 0 7px #ff4d5e}.amber{background:#ffc64f;box-shadow:0 0 7px #ffc64f}
-.map-controls button:disabled{opacity:.35;cursor:not-allowed;background:#0b1822}
-.station-route{padding:8px 0;border-bottom:1px solid #233446;font-size:10px}.station-route div{display:flex;align-items:center;gap:6px;color:#dce7f5}.station-route i{display:inline-block;width:9px;height:9px;border-radius:50%}.station-route span{display:block;margin:4px 0 0 15px;color:#8298ac;line-height:1.55}.station-log{max-height:280px;overflow:auto}.ai-suggestions{max-height:310px;overflow:auto}.mcp-log{max-height:145px;overflow:auto;padding-top:6px;padding-bottom:6px}.suggestion{padding:8px 0;border-bottom:1px solid #233446;font:10px/1.45 Consolas}.suggestion b{display:block;color:#dce7f5;margin-bottom:3px}.suggestion span{color:#8298ac}.suggestion em{font-style:normal;color:#ffbd52;margin-right:5px}.suggestion.action em{color:#50dfa1}.work-entry{padding:6px 0;border-bottom:1px dashed #27394b;font:10px/1.4 Consolas;color:#a7b8c8}.work-entry time{display:block;color:#607a91}.work-entry .applied{color:#50dfa1}.work-entry .planned{color:#ffbd52}
-.detail-toolbar{padding:8px 12px;border-bottom:1px solid #243547;background:#0a1722}.detail-back{border:1px solid #3a6178;background:#102535;color:#7ee6ff;border-radius:2px;padding:5px 10px;font:11px "Microsoft YaHei";cursor:pointer}.detail-back:hover{background:#17384c}.vehicle-load{font:11px/1.6 Consolas;color:#c7d3df}.vehicle-load b{color:#ffdb78}
-.suggestion time{display:block;color:#607a91;margin-bottom:3px}.advice-more{display:block;width:100%;margin:8px 0 1px;padding:7px;border:1px solid #36566e;background:#102535;color:#68dfff;border-radius:2px;font:11px "Microsoft YaHei";cursor:pointer}.advice-more:hover{background:#17384c}
-aside,aside *{user-select:text;-webkit-user-select:text}aside{cursor:text}aside *{-webkit-user-drag:auto}
-</style></head><body>
-<header><div class="brand"><b>TPF2</b> // CTC DISPATCH</div><div class="sep"></div><div class="station" id="station-name">—</div><div class="meta" id="snapshot">—</div><div class="spacer"></div><div class="mode">LOCAL CONTROL · STATIC</div><div class="clock">00:00:00</div></header>
-<div class="workspace"><nav><button class="active">站场图</button><button id="timetable-view">运行图</button><button>线路</button><button>车辆</button><button>告警</button><button>设置</button></nav><section id="board-wrap"><svg id="board" viewBox="0 0 1200 720" preserveAspectRatio="xMidYMid meet"></svg><div class="track-tooltip" id="track-tooltip"></div><div class="map-controls"><button class="view selected" id="local-view">局部</button><button class="view" id="network-view">全网</button><button id="zoom-out" title="缩小">−</button><span class="zoom-value" id="zoom-value">100%</span><button id="zoom-in" title="放大">+</button><button class="reset" id="zoom-reset">复位</button></div><div class="watermark">PHYSICAL GRAPH · 游戏引擎原始坐标</div></section><aside><div class="panel-title">车站与轨道信息</div><div id="sidebar"></div></aside></div>
-<footer><span><i class="lamp green"></i>Bridge 数据有效</span><span><i class="lamp green"></i>轨道坐标来自游戏引擎</span><span><i class="lamp amber" id="live-lamp"></i>动态遥测</span><span id="footer-info"></span></footer><script>document.querySelector('#timetable-view').onclick=()=>location.href='timetable.html';</script><script src="vendor/pixi-7.4.3.min.js"></script><script src="data.js"></script><script src="ground-truth.js"></script><script src="physical-track-data.js"></script><script src="rail-network-manifest.js?v=20260912-construction-span2"></script><script src="network-app.js?v=20260912-system-test-label1"></script><script src="app.js?v=20260912-system-test-label1"></script></body></html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>TPF2 CTC 调度台原型</title>
+    <link rel="stylesheet" href="network.css?v=20260913-work-log-modal1">
+</head>
+<body>
+    <header>
+        <div class="brand"><b>TPF2</b> // CTC DISPATCH</div>
+        <div class="sep"></div>
+        <div class="station" id="station-name">—</div>
+        <div class="meta" id="snapshot">—</div>
+        <div class="spacer"></div>
+        <div class="mode">LOCAL CONTROL · STATIC</div>
+        <div class="clock">00:00:00</div>
+    </header>
+    <div class="workspace">
+        <nav>
+            <button class="active">站场图</button>
+            <button id="timetable-view">运行图</button>
+            <button>线路</button>
+            <button>车辆</button>
+            <button>告警</button>
+            <button>设置</button>
+        </nav>
+        <section id="board-wrap">
+            <svg id="board" viewBox="0 0 1200 720" preserveAspectRatio="xMidYMid meet"></svg>
+            <div class="track-tooltip" id="track-tooltip"></div>
+            <div class="map-notice" id="map-notice" role="status" aria-live="polite"></div>
+            <div class="map-controls">
+                <button class="view selected" id="local-view">局部</button>
+                <button class="view" id="network-view">全网</button>
+                <button id="zoom-out" title="缩小">−</button>
+                <span class="zoom-value" id="zoom-value">100%</span>
+                <button id="zoom-in" title="放大">+</button>
+                <button class="reset" id="zoom-reset">复位</button>
+            </div>
+            <div class="watermark">PHYSICAL GRAPH · 游戏引擎原始坐标</div>
+        </section>
+        <aside>
+            <div class="sidebar-header">
+                <div class="panel-title">车站与轨道信息</div>
+                <button type="button" class="detail-back is-hidden" id="sidebar-back">← 返回全路网</button>
+            </div>
+            <div id="sidebar"></div>
+        </aside>
+    </div>
+    <footer>
+        <span><i class="lamp amber" id="bridge-lamp"></i>Bridge</span>
+        <span><i class="lamp amber" id="live-lamp"></i>动态遥测</span>
+        <span id="footer-info"></span>
+        <button type="button" id="toggle-signals" hidden>隐藏信号机</button>
+    </footer>
+    <div id="rail-map-templates" data-template-files="templates/common.html,templates/overview-sidebar.html,templates/station-sidebar.html,templates/vehicle-sidebar.html,templates/local-station-sidebar.html" hidden aria-hidden="true"></div>
+    <script src="vendor/jquery-4.0.0.min.js"></script>
+    <script src="network-page.js?v=20260912-status-lamps1"></script>
+    <script src="template-runtime.js?v=20260912-template-extraction1"></script>
+    <script src="vendor/pixi-7.4.3.min.js"></script>
+    <script src="rail-network-manifest.js?v=20260912-manifest1"></script>
+    <script src="bridge-crossings.js?v=20260913-bridge-crossing21"></script>
+    <script src="network-app.js?v=20260913-bridge-crossing18-work-log-modal1"></script>
+    <script src="app.js?v=20260913-bridge-crossing18-sidebar-header2-station-scope1"></script>
+</body>
+</html>
