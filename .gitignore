@@ -2,6 +2,8 @@ __pycache__/
 *.py[cod]
 .venv/
 bridge/
+tpf2_mcp_state/
+local_config.lua
 
 # Python build/test state
 *.egg-info/
