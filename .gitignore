@@ -22,11 +22,17 @@ diagnostics/
 /*.zip
 
 # Generated save-specific railway exports
+ui/rail-map/data.js
+ui/rail-map/local-station.json
+ui/rail-map/ground-truth.json
+ui/rail-map/ground-truth.js
+ui/rail-map/station-model-ground-truth.json
 ui/rail-map/rail-network-tiles/
 ui/rail-map/rail-network-manifest.json
 ui/rail-map/rail-network-manifest.js
 ui/rail-map/rail-network-data.json
 ui/rail-map/rail-network-data.js
+ui/rail-map/station-previews/
 ui/rail-map/physical-track-data.json
 ui/rail-map/physical-track-data.js
 
