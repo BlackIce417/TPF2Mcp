@@ -25,7 +25,7 @@ def read(path: Path) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--snapshot", type=Path, required=True)
-    parser.add_argument("--manifest", type=Path, default=ROOT / "ui" / "rail-map" / "rail-network-data.json")
+    parser.add_argument("--manifest", type=Path, default=ROOT / "var" / "rail-map" / "rail-network-data.json")
     parser.add_argument("--live-frame", type=Path, action="append", default=[])
     parser.add_argument("--observation", type=Path, action="append", default=[], help="JSON object containing a frames array")
     parser.add_argument("--demand-database", type=Path, default=state_dir() / "line-demand.sqlite3")

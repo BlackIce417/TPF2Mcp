@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>TPF2 CTC 调度台原型</title>
+    <link rel="stylesheet" href="./styles/network.css">
+    <link rel="stylesheet" href="./styles/sidebar.css">
+</head>
+<body>
+    <header>
+        <div class="brand"><b>TPF2</b> // CTC DISPATCH</div>
+        <div class="sep"></div>
+        <div class="station" id="station-name">—</div>
+        <div class="meta" id="snapshot">—</div>
+        <div class="spacer"></div>
+        <button type="button" class="control-state" id="control-system-state" aria-expanded="false">控制：载入中</button>
+        <button type="button" class="control-stop" id="control-system-stop" disabled>停用控制</button>
+        <div class="mode">LOCAL CONTROL · STATIC</div>
+        <time id="system-clock" aria-label="系统本地时间"></time>
+        <div class="clock">00:00:00</div>
+    </header>
+    <section class="control-popover" id="control-system-popover" hidden></section>
+    <div class="workspace">
+        <nav aria-label="主导航">
+            <button type="button" data-nav="index.html?view=network" class="active" aria-current="page">站场图</button>
+            <button type="button" data-nav="timetable.html">运行图</button>
+            <button type="button" data-nav="regions.html">调度区</button>
+        </nav>
+        <section id="board-wrap">
+            <svg id="board" viewBox="0 0 1200 720" preserveAspectRatio="xMidYMid meet"></svg>
+            <div class="track-tooltip" id="track-tooltip"></div>
+            <div class="map-notice" id="map-notice" role="status" aria-live="polite"></div>
+            <div class="map-controls">
+                <button class="view selected" id="local-view">局部</button>
+                <button class="view" id="network-view">全网</button>
+                <button id="zoom-out" title="缩小">−</button>
+                <span class="zoom-value" id="zoom-value">100%</span>
+                <button id="zoom-in" title="放大">+</button>
+                <button class="reset" id="zoom-reset">复位</button>
+            </div>
+            <div class="watermark">PHYSICAL GRAPH · 游戏引擎原始坐标</div>
+        </section>
+        <aside id="rail-sidebar-r" class="app-sidebar app-sidebar-r rail-sidebar">
+            <div class="sidebar-header">
+                <div class="panel-title">车站与轨道信息</div>
+                <button type="button" class="detail-back is-hidden" id="sidebar-back">← 返回全路网</button>
+            </div>
+            <div id="sidebar"></div>
+        </aside>
+    </div>
+    <footer>
+        <span><i class="lamp amber" id="bridge-lamp"></i>Bridge</span>
+        <span><i class="lamp amber" id="live-lamp"></i>动态遥测</span>
+        <span id="footer-info"></span>
+        <button type="button" id="toggle-signals" hidden>隐藏信号机</button>
+    </footer>
+    <div id="rail-map-templates" data-template-files="templates/common.html,templates/overview-sidebar.html,templates/station-sidebar.html,templates/vehicle-sidebar.html,templates/local-station-sidebar.html" hidden aria-hidden="true"></div>
+    <script src="/vendor/jquery-4.0.0.min.js"></script>
+    <script src="/vendor/pixi-7.4.3.min.js"></script>
+    <script type="module" src="./pages/network/entry.js"></script>
+</body>
+</html>

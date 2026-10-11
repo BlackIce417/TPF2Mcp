@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "Immutable regional observation v1",
+  "type": "object", "required": ["schema_version", "save_id", "session_id", "topology_version", "sequence", "sampled_at", "quality", "trains"],
+  "properties": {
+    "schema_version": {"const": 1}, "save_id": {"type": "string"}, "session_id": {"type": "string"},
+    "topology_version": {"type": "string"}, "sequence": {"type": "integer", "minimum": 1},
+    "sampled_at": {"type": "number"},
+    "quality": {"type": "object", "required": ["fresh", "session_verified", "simulation_running", "territory_verified"],
+      "properties": {"fresh": {"type": "boolean"}, "session_verified": {"type": "boolean"}, "simulation_running": {"type": "boolean"}, "territory_verified": {"type": "boolean"}}},
+    "trains": {"type": "array", "items": {"type": "object", "required": ["vehicle_id", "head_region", "footprint_complete", "occupied_regions"],
+      "properties": {"vehicle_id": {"type": "integer"}, "head_region": {"type": ["string", "null"]}, "footprint_complete": {"type": "boolean"},
+                     "occupied_regions": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}}}}
+  }
+}

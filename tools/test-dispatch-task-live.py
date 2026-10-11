@@ -30,7 +30,7 @@ def main() -> int:
     current = SnapshotIndex(bridge.game_state(force_refresh=True))
 
     if args.vehicle_id is None:
-        manifest = json.loads((ROOT / "ui" / "rail-map" / "rail-network-manifest.json").read_text(encoding="utf-8"))
+        manifest = json.loads((ROOT / "var" / "rail-map" / "rail-network-manifest.json").read_text(encoding="utf-8"))
         rail_line_ids = {item.get("entity_id") for item in manifest.get("lines", [])}
         vehicle = next((item for item in current.vehicle_by_id.values() if item.get("raw_state") == 2 and item.get("line_id") in rail_line_ids and item.get("raw_autoDeparture") is True), None)
         if vehicle is None:

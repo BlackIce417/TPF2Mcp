@@ -1,9 +1,11 @@
 # Scheduling source map
 
 The current snapshot has verified observed `frequency` and `rate` on a line.
-They are KPIs, not established write controls. The installed shipped-script
-scan found no command signature for minimum load, maximum wait, full-load, or
-terminal waiting policy.
+They are observed KPIs, not direct write controls. The early shipped-script
+scan was inconclusive; later updateLine stop-policy operations were verified,
+as listed below. Station hold/release and timetable execution are separate
+controls, not setters for observed frequency/rate. Current native and public
+interface limits are documented in [CURRENT_CAPABILITIES.md](CURRENT_CAPABILITIES.md).
 
 | UI/control concept | Read path | Write command | Status |
 |---|---|---|---|

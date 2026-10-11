@@ -1,27 +1,27 @@
 # Architecture
 
-TPF2 MCP has four isolated layers:
+Updated 2026-09-25 against the current working tree. Start with [current capabilities](CURRENT_CAPABILITIES.md) for validated boundaries.
 
-```text
-MCP client
-  -> Python MCP adapter (server.py)
-  -> BridgeClient / file transport (bridge.py)
-  -> TPF2 mod runtime (runtime.lua)
-  -> TPF2 API collector (state.lua)
-```
+## Existing runtime paths
 
-The boundary data is JSON validated by the schemas in `protocol/`. Lua API tables are normalized in the mod before they cross that boundary. Schema-v2 snapshots are indexed in Python; `get_game_state` returns game/company/metadata/counts while `get_world_snapshot` returns the complete normalized model. `SnapshotIndex` builds entity dictionaries plus `vehicles_by_line` and `lines_by_station` once per read-only MCP interaction window.
+    MCP client -> Python stdio JSON-RPC server -> BridgeClient -> Lua runtime -> game API
+    Vite UI / local client -> FastAPI web_app -> web_state / existing engineering controller
+    Engineering controller -> bounded native INI leases -> version-locked native DLL hooks
+    Regional worker -> immutable JSON frames + SQLite -> shadow handover ledger (game_write=false)
 
-`BridgeClient` owns request IDs, polling, timeouts, and atomic command writes. The MCP adapter only maps `get_bridge_status` and `get_game_state` to it. This keeps a later IPC transport replacement local to the bridge layer.
+BridgeClient owns request IDs, file transport and matching responses. MCP tools use it rather than manipulating Bridge files themselves. Lua normalizes engine observations. The generic world snapshot, on-demand line demand and high-frequency telemetry are distinct data products; availability in one does not imply availability in every legacy field.
 
-Commands are level 0/read-only. Network summary and deterministic anomaly tools only query the indexed snapshot; they cannot modify the game. Future write commands require explicit permission levels and dry-run support.
+MCP exposes read tools and controlled line/fleet/stop-policy Tasks. The HTTP dispatch facade also exists, but several commands only enable internal policies. It is inaccurate to describe all commands as read-only or all game writes as passing through the MCP Task chain.
 
-## MCP compatibility status
+The old controller remains hosted by the Web state lifecycle. The independent regional worker has storage, observation and shadow coordination, but no game execution adapter. Full collector/decision/executor separation is described in [modular-dispatch-design.md](modular-dispatch-design.md), not completed across all existing paths.
 
-Current implementation: a legacy/minimal MCP compatibility layer implemented directly over stdio JSON-RPC. It exists only to validate the live TPF2 bridge and must not be treated as proof of current official MCP SDK compatibility. The project will migrate to the official MCP SDK after live bridge validation in Phase 2.
+## Protocol and validation
 
-## Test classifications
+The stdio server remains a project JSON-RPC implementation; this document does not establish official SDK compatibility. See actual server tool declarations, protocol schemas and command handlers rather than the original Phase 2 interface list.
 
-- **OFFLINE TEST** validates Python protocol and transport behavior without a game process.
-- **MOCK TEST** uses `MockBridge` and fixture JSON; it is not a TPF2 bridge result.
-- **LIVE TPF2 TEST** requires an enabled mod in an open TPF2 save and must be run with `tools/test-live-bridge.ps1`.
+- Offline tests exercise code without a game.
+- Mock tests use synthetic fixtures; their results are not engine evidence.
+- Historical live records are scoped to their executable, loaded Mod, save and date.
+- ACCEPTED, published leases, Hook counters and shadow ledger results must not be treated as equivalent to observed game effects.
+
+Current source locations: server.py, bridge.py, web_app.py, web_state.py, dispatch_platform.py, control_system.py, dispatch_runtime/, and native/tpf2_control/tpf2_control.c. Known execution gaps and the 2026-09-25 review are recorded in [CURRENT_CAPABILITIES.md](CURRENT_CAPABILITIES.md).

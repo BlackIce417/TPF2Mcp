@@ -3,9 +3,10 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
-from tpf2_mcp.bridge import BridgeClient, _atomic_json_write
+from tpf2_mcp.bridge import BridgeClient, _atomic_json_write, _orphaned_lock
 
 
 class BridgeTests(unittest.TestCase):
@@ -25,6 +26,13 @@ class BridgeTests(unittest.TestCase):
             client = BridgeClient(bridge)
             client._prepare_directory()
             self.assertTrue((bridge / "responses").is_dir())
+
+    def test_crashed_owner_lock_is_detected_without_waiting_for_age_timeout(self):
+        with tempfile.TemporaryDirectory() as directory:
+            lock = Path(directory) / "command.lock"
+            lock.write_text("pid=987654 time=1\n", encoding="ascii")
+            with patch("tpf2_mcp.bridge._process_exists", return_value=False):
+                self.assertTrue(_orphaned_lock(lock))
 
     def test_request_specific_ready_marked_response(self):
         with tempfile.TemporaryDirectory() as directory:

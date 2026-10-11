@@ -1,0 +1,9 @@
+name: tpf2mcp
+channels:
+  - defaults
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      - -r mcp_server/requirements.txt
+      - -r tests/requirements-web.txt

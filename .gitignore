@@ -1,6 +1,8 @@
 __pycache__/
 *.py[cod]
 .venv/
+ui/rail-map/node_modules/
+ui/rail-map/dist/
 bridge/
 tpf2_mcp_state/
 local_config.lua
@@ -13,7 +15,9 @@ htmlcov/
 
 # Local runtime state and diagnostics
 diagnostics/
+var/
 .tmp-*/
+native/**/build/
 *.tmp
 *.lock
 *.log
@@ -23,23 +27,7 @@ diagnostics/
 # Large hand-off archives
 /*.zip
 
-# Generated save-specific railway exports
-ui/rail-map/data.js
-ui/rail-map/local-station.json
-ui/rail-map/ground-truth.json
-ui/rail-map/ground-truth.js
-ui/rail-map/station-model-ground-truth.json
-ui/rail-map/rail-network-tiles/
-ui/rail-map/rail-network-manifest.json
-ui/rail-map/rail-network-manifest.js
-ui/rail-map/rail-network-data.json
-ui/rail-map/rail-network-data.js
-ui/rail-map/station-previews/
-ui/rail-map/physical-track-data.json
-ui/rail-map/physical-track-data.js
-
-# UI screenshots produced during acceptance
-ui/rail-map/*.png
+# Generated save-specific railway exports live under var/rail-map/.
 
 # Local README screenshot cache; public copies live on the image-hosting branch.
 docs/images/
@@ -52,3 +40,10 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# Private reverse-engineering notes and research tools
+docs/NATIVE_ENGINE_RESEARCH.md
+docs/SIGNAL_OBSERVATIONS.md
+tools/ida-*.py
+tools/signal-write-watch.c
+tools/prepare-engine-probe.py

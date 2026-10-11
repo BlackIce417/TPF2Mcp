@@ -55,10 +55,13 @@ class SnapshotIndex:
             else:
                 self.broken_vehicle_references.append(vehicle)
         for line in self.line_by_id.values():
+            indexed_station_ids: set[int] = set()
             for stop in _items(line, "stops"):
                 station_id = stop.get("station_id")
                 if station_id in self.lines_by_station:
-                    self.lines_by_station[station_id].append(line)
+                    if station_id not in indexed_station_ids:
+                        self.lines_by_station[station_id].append(line)
+                        indexed_station_ids.add(station_id)
                 else:
                     self.unresolved_stop_references.append({"line_id": line.get("entity_id"), "stop": stop})
 

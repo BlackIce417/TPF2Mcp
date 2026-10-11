@@ -51,7 +51,7 @@ def main() -> None:
         if time.monotonic() >= deadline:
             break
         time.sleep(max(.2, args.interval_seconds))
-    manifest = read_json(ROOT / "ui" / "rail-map" / "rail-network-manifest.json")
+    manifest = read_json(ROOT / "var" / "rail-map" / "rail-network-manifest.json")
     snapshot = read_json(bridge / "state.json")
     plan = optimize_dwell_times(frames, manifest, snapshot)
     args.output_directory.mkdir(parents=True, exist_ok=True)

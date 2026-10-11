@@ -7,7 +7,7 @@ from tpf2_mcp.rail_crossings import detect_grade_separated_crossings
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "ui/rail-map/bridge-crossings.js"
+MODULE = ROOT / "ui/rail-map/src/pages/network/bridge-crossings.js"
 
 
 def run_detector(nodes: list[dict], edges: list[dict]) -> list[dict]:

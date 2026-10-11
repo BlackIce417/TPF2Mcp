@@ -1,0 +1,34 @@
+<template id="timetable-summary-template">
+    <div class="timetable-summary">
+        <div><b data-field="planned-lines"></b> 条线路</div>
+        <div>减少发车近邻 <span data-field="conflicts-removed"></span> 对</div>
+        <div class="warn">仅按站组错峰，未验证区间无冲突</div>
+    </div>
+</template>
+
+<template id="timetable-line-detail-template">
+    <div class="timetable-line-detail">
+        <b data-field="line-name"></b>
+        <div><span data-field="service-class"></span> · 图定运行速度 <span data-field="schedule-speed"></span> km/h</div>
+        <div>车底上限 <span data-field="consist-speed"></span> · 线路最低限速 <span data-field="infrastructure-speed"></span> km/h</div>
+        <div>最长编组 <span data-field="longest-train"></span> m · 站台适配 <span data-field="platform-status"></span></div>
+        <div><span data-field="vehicle-count"></span> 组车 · 间隔 <span data-field="headway"></span> · 周期 <span data-field="cycle"></span></div>
+        <div>全局移位 <span data-field="phase-shift"></span>s</div>
+        <div>发车近邻 <span data-field="conflicts-before"></span> → <span data-field="conflicts-after"></span></div>
+        <div>运行时分：<span data-field="time-source"></span></div>
+        <div>计划来源：<span data-field="plan-source"></span></div>
+        <div>游戏控制：<span data-field="controller-state"></span></div>
+        <div class="warn">预览不代表已应用；不据此推断车辆晚点</div>
+    </div>
+</template>
+
+<template id="timetable-line-row-template">
+    <button class="line" type="button">
+        <span data-field="line-name"></span>
+        <small data-field="summary"></small>
+    </button>
+</template>
+
+<template id="timetable-error-template">
+    <span class="warn">运行图载入失败：<span data-field="message"></span></span>
+</template>

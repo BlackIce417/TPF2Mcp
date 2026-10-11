@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Regional coordination command v1 (not a game movement command)",
+  "type": "object",
+  "required": ["schema_version", "command_id", "save_id", "session_id", "topology_version", "based_on_sequence", "expires_at", "type", "vehicle_id", "actor_region"],
+  "properties": {
+    "schema_version": {"const": 1}, "command_id": {"type": "string", "minLength": 1},
+    "save_id": {"type": "string", "minLength": 1}, "session_id": {"type": "string", "minLength": 1},
+    "topology_version": {"type": "string", "minLength": 1}, "based_on_sequence": {"type": "integer", "minimum": 1},
+    "expires_at": {"type": "number"}, "vehicle_id": {"type": "integer", "minimum": 0},
+    "actor_region": {"type": "string", "minLength": 1},
+    "type": {"enum": ["REGISTER_TRAIN", "RECONCILE_OBSERVED_OWNER", "REQUEST_HANDOVER", "ACCEPT_HANDOVER", "ENTER_REGION", "RELEASE_TAIL", "CANCEL_HANDOVER"]},
+    "handover_id": {"type": "string", "minLength": 1}, "anchor_id": {"type": "string", "minLength": 1},
+    "target_region": {"type": "string", "minLength": 1},
+    "resources": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "lease_seconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 30}
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {"if": {"properties": {"type": {"const": "RECONCILE_OBSERVED_OWNER"}}}, "then": {"required": ["target_region"]}},
+    {"if": {"properties": {"type": {"const": "REQUEST_HANDOVER"}}}, "then": {"required": ["handover_id", "anchor_id", "target_region", "resources", "lease_seconds"]}},
+    {"if": {"properties": {"type": {"enum": ["ACCEPT_HANDOVER", "ENTER_REGION", "RELEASE_TAIL", "CANCEL_HANDOVER"]}}}, "then": {"required": ["handover_id"]}}
+  ]
+}

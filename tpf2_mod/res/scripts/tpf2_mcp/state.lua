@@ -63,6 +63,7 @@ function M.snapshot(sequence, force_refresh)
         sequence = sequence,
         timestamp = current_time,
         metadata = {
+            session_id = operational_telemetry.session_id(),
             sequence = sequence,
             timestamp = current_time,
             field_sources = {

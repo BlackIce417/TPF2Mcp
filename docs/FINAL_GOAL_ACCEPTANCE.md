@@ -1,5 +1,7 @@
 # AI Traffic Operator final-goal acceptance
 
+> 2026-09-25 状态校订：本文是 2026-09-11 的阶段验收。下文载荷、候车量和路径不可用等结论仅适用于当时的快照/工具；后续已有独立需求采集和部分原生控制，但不代表全部旧字段已补齐。当前接口与实现缺口见 [当前能力](CURRENT_CAPABILITIES.md)。
+
 Date: 2026-09-11 (Asia/Shanghai)
 
 ## Outcome

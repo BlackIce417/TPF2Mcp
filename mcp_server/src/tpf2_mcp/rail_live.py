@@ -3,6 +3,9 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from typing import Any
+from .dispatch_runtime.geometry import RailGraph
+from .dispatch_runtime.boundaries import normalize_directional_signals
+from .signal_observations import merge_signal_states
 
 
 def _field(fields: dict[str, Any] | None, name: str) -> Any:
@@ -54,6 +57,8 @@ def _edge_param_from_position(edge: dict[str, Any], nodes: dict[int, dict[str, f
 
 class RailSpatialIndex:
     def __init__(self, network: dict[str, Any], cell_size: float = 400.0):
+        self.network = network
+        self.direction_graph = None
         self.cell_size = cell_size
         self.nodes = {int(node["entity_id"]): node["position"] for node in network.get("nodes", [])}
         self.edges = {int(edge["entity_id"]): edge for edge in network.get("edges", [])}
@@ -101,6 +106,11 @@ def normalize_signals(telemetry: dict[str, Any], index: RailSpatialIndex) -> lis
     result = []
     confirmed = telemetry.get("signal_edge_objects") or []
     candidates = confirmed or telemetry.get("track_edge_objects") or []
+    if index.direction_graph is None and any(x.get('direction_evidence') for x in candidates):
+        index.direction_graph = RailGraph(index.network)
+    directional = {x['entity_id']: x for x in normalize_directional_signals(
+        {'signal_edge_objects': [{**x, 'position': _object_position(x, index)} for x in candidates]},
+        index.direction_graph)} if index.direction_graph else {}
     for item in candidates:
         position = _object_position(item, index)
         if not position:
@@ -119,7 +129,12 @@ def normalize_signals(telemetry: dict[str, Any], index: RailSpatialIndex) -> lis
             "signal_types": item.get("signal_types") or [],
             "model_names": names,
             "source_status": "SIGNAL_LIST_CLASSIFIED" if item.get("operational_signal_observed") else "MODEL_CLASSIFIED" if item.get("signal_model_observed") else "COMPONENT_CLASSIFIED" if item.get("signal_component_observed") else "TRACK_OBJECT_CANDIDATE",
+            "directions": directional.get(item.get('object_entity_id'), {}).get('directions', []),
+            "direction_bindings": directional.get(item.get('object_entity_id'), {}).get('direction_bindings', []),
+            "direction_status": directional.get(item.get('object_entity_id'), {}).get('direction_status', 'UNKNOWN'),
         })
+        if item.get('object_entity_id') in directional:
+            result[-1]['edge_param'] = directional[item['object_entity_id']]['edge_param']
     return result
 
 
@@ -330,7 +345,27 @@ def normalize_live_state(telemetry: dict[str, Any], network: dict[str, Any], man
         observed_speed = raw.get("speed_mps") if isinstance(raw.get("speed_mps"), (int, float)) else next((_field(raw.get(source), "speed") for source in ("move_info", "info", "move_path_detail") if isinstance(_field(raw.get(source), "speed"), (int, float))), None)
         if observed_speed is not None:
             speed = float(observed_speed)
-        vehicles.append({"entity_id": entity_id, "name": raw.get("name"), "line_id": line_id, "stop_index": raw.get("stop_index") if isinstance(raw.get("stop_index"), int) else _field(raw.get("component"), "stopIndex"), "raw_state": raw.get("raw_state") if isinstance(raw.get("raw_state"), int) else _field(raw.get("component"), "state"), "position": position, "snapped_position": snap["position"], "edge_id": snap["edge_id"], "edge_param": round(snap["edge_param"], 5), "rail_distance_m": round(snap["distance_m"], 2), "position_source": position_source or "UNKNOWN", "position_stale": position_stale, "position_age_seconds": round(position_age_seconds, 2), "position_observed_at": position_observed_at, "speed_mps": round(speed, 2) if speed is not None else None, "speed_kmh": round(speed * 3.6, 1) if speed is not None else None, "acceleration_mps2": raw.get("acceleration_mps2"), "approaching_station": raw.get("approaching_station"), "auto_departure": raw.get("auto_departure"), "doors_open": raw.get("doors_open"), "time_until_load": raw.get("time_until_load"), "time_until_close_doors": raw.get("time_until_close_doors"), "time_until_departure": raw.get("time_until_departure")})
+        vehicles.append({"entity_id": entity_id, "name": raw.get("name"), "line_id": line_id, "stop_index": raw.get("stop_index") if isinstance(raw.get("stop_index"), int) else _field(raw.get("component"), "stopIndex"), "raw_state": raw.get("raw_state") if isinstance(raw.get("raw_state"), int) else _field(raw.get("component"), "state"), "position": position, "snapped_position": snap["position"], "edge_id": snap["edge_id"], "edge_param": round(snap["edge_param"], 5), "rail_distance_m": round(snap["distance_m"], 2), "position_source": position_source or "UNKNOWN", "position_stale": position_stale, "position_age_seconds": round(position_age_seconds, 2), "position_observed_at": position_observed_at, "speed_mps": round(speed, 2) if speed is not None else None, "speed_kmh": round(speed * 3.6, 1) if speed is not None else None, "acceleration_mps2": raw.get("acceleration_mps2"), "approaching_station": raw.get("approaching_station"), "arrival_station_index": raw.get("arrival_station_index"), "arrival_terminal_index": raw.get("arrival_terminal_index"), "arrival_station_terminal_locked": raw.get("arrival_station_terminal_locked"), "auto_departure": raw.get("auto_departure"), "user_stopped": raw.get("user_stopped"), "movement_control": raw.get("movement_control"), "doors_open": raw.get("doors_open"), "time_until_load": raw.get("time_until_load"), "time_until_close_doors": raw.get("time_until_close_doors"), "time_until_departure": raw.get("time_until_departure")})
+        # Preserve the engine route occurrence and complete consist evidence.
+        # Spacing control consumes these fields directly and fails closed when
+        # any member is missing, stale, or inconsistent with the current head.
+        envelope = raw.get("train_envelope")
+        complete = (isinstance(envelope, dict) and envelope.get("complete") is True
+                    and isinstance(envelope.get("parts"), list) and envelope.get("parts")
+                    and envelope.get("expected_parts") == len(envelope["parts"]))
+        vehicles[-1].update({
+            "current_edge_index": raw.get("current_edge_index"),
+            "current_edge_direction": raw.get("current_edge_direction"),
+            "path_edge_ids": raw.get("path_edge_ids"),
+            "path_edge_directions": raw.get("path_edge_directions"),
+            "path_transport_indices": raw.get("path_transport_indices"),
+            "route_window": raw.get("route_window"),
+            "train_envelope": envelope,
+            "footprint_complete": complete,
+            "footprint_sampled_at": raw.get("footprint_sampled_at"),
+            "brake_decel_mps2": raw.get("brake_decel_mps2"),
+            "braking_verified": raw.get("braking_verified") is True,
+        })
     if control is None:
         signals = normalize_signals(telemetry, index)
         blocks, atoms = derive_blocks(network, signals, index)
@@ -338,6 +373,9 @@ def normalize_live_state(telemetry: dict[str, Any], network: dict[str, Any], man
         signals, block_templates, atoms = control
         blocks = [{**block, "occupied_vehicle_ids": []} for block in block_templates]
     block_by_id = {block["block_id"]: block for block in blocks}
+    signals = merge_signal_states(signals, telemetry.get('signal_state_payload') or {},
+                                  session_id=telemetry.get('session_id'), now=sampled_at,
+                                  inventory_generated_at=telemetry.get('signal_inventory_generated_at'))
     atoms_by_edge: dict[int, list[dict[str, Any]]] = defaultdict(list)
     for atom in atoms:
         atoms_by_edge[atom["edge_id"]].append(atom)

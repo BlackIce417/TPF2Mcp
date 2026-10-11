@@ -1,0 +1,52 @@
+.workspace { grid-template-columns: 64px minmax(0, 1fr) 340px; }
+nav button { cursor: pointer; }
+.dispatch-sidebar { overflow-y: auto; }
+#region-webgl, #board { position: absolute; inset: 0; width: 100%; height: 100%; }
+#region-webgl { z-index: 0; pointer-events: none; }
+#board { z-index: 1; }
+.region-network-territory { fill: none; stroke-width: 1.35; vector-effect: non-scaling-stroke; pointer-events: none; }
+.region-network-territory.is-dim { opacity: .12; }
+.region-network-territory.is-selected { stroke-width: 1.8; }
+.dispatch-region-list, #region-details { padding: 12px; }
+.dispatch-region-list { display: grid; gap: 8px; border-bottom: 1px solid #26384a; }
+.region-card { display: grid; grid-template-columns: 12px 1fr; gap: 5px 10px; text-align: left; padding: 12px; color: #dce7f5; border: 1px solid #344b62; background: #101e2b; border-radius: 4px; cursor: pointer; }
+.region-card small { grid-column: 2; color: #93aabf; }
+.region-card[aria-pressed="true"] { border-color: var(--region-color); background: #1b3145; box-shadow: inset 3px 0 var(--region-color); }
+.region-swatch { width: 10px; height: 10px; background: var(--region-color); border-radius: 50%; margin-top: 4px; }
+#region-details h3 { margin: 6px 0 10px; font-size: 15px; }
+#region-details h4 { margin: 18px 0 7px; color: #b6cee0; }
+#region-details p { color: #94a9bd; line-height: 1.7; margin: 8px 0; font-size: 12px; }
+.region-stations, .region-boundaries { display: grid; gap: 5px; }
+.region-stations button, .region-boundaries button, #reload-regions { cursor: pointer; color: #c6daeb; background: #122130; border: 1px solid #2f465a; padding: 8px; border-radius: 3px; text-align: left; font: inherit; }
+.region-stations button small { display: block; color: #829aaf; margin-top: 3px; }
+.region-stations button:hover, .region-boundaries button:hover { border-color: #70cde7; }
+#region-details a { color: #66d9f7; }
+.region-station { cursor: pointer; }
+.region-station.is-dim, .region-anchor.is-dim { opacity: .16; }
+.region-station text, .region-anchor text { fill: #c9dfef; font: 10px 'Microsoft YaHei', sans-serif; stroke: #07101b; stroke-width: 3; paint-order: stroke; pointer-events: none; }
+.region-station.is-focused circle { fill: white; stroke: #fff; stroke-width: 2; }
+.region-station.is-focused text { fill: white; font-weight: bold; }
+.region-anchor { cursor: pointer; }
+.region-anchor rect { fill: #ff6685; stroke: #300917; stroke-width: 1; }
+.region-anchor text { fill: #ff9bb0; font-size: 9px; }
+#board.dragging #region-world text { visibility: hidden; }
+#region-message { position: absolute; top: 45%; width: 100%; text-align: center; color: #c3d8e8; pointer-events: none; }
+#region-message.is-error { color: #ffbf70; }
+#region-message[hidden] { display: none; }
+#region-legend { display: flex; gap: 16px; position: absolute; left: 18px; bottom: 20px; padding: 9px 12px; background: #0a1726ed; border: 1px solid #2a4259; font-size: 12px; }
+#region-legend span { display: inline-flex; align-items: center; gap: 6px; }
+#region-legend i { width: 9px; height: 9px; background: var(--region-color); border-radius: 50%; }
+.map-controls label { color: #b8cbdf; font-size: 12px; display: flex; align-items: center; }
+.map-controls #all-regions, .map-controls #fit-region, .map-controls #zoom-reset { width: auto; padding: 0 10px; white-space: nowrap; font-size: 12px; }
+#region-details details { margin: 15px 0; border: 1px solid #2f465a; border-radius: 3px; padding: 8px; }
+#region-details summary { cursor: pointer; color: #b6cee0; font-size: 13px; }
+#region-details details[open] .region-boundaries { margin-top: 10px; }
+#region-footer { flex: 1; }
+#reload-regions { font-size: 11px; padding: 3px 8px; }
+button:focus-visible, a:focus-visible { outline: 2px solid #80e2ff; outline-offset: 2px; }
+#regional-runtime { margin: 0 14px 12px; padding: 10px 12px; border: 1px solid #294356; border-radius: 6px; font-size: 12px; line-height: 1.6; }
+#regional-runtime h3 { margin: 0 0 6px; font-size: 13px; }
+#regional-runtime p { margin: 4px 0; }
+#regional-runtime summary { cursor: pointer; }
+.regional-warning { color: #e7b75f; }
+.region-anchor.direction-calibrated rect { stroke: #55dbaa; }

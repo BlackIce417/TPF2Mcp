@@ -1,5 +1,7 @@
 # Railway live layer acceptance
 
+> 2026-09-25 状态校订：本文保留 2026-09-11 的实机验收范围与数字，不是当前全量能力表。后续信号方向、车体和需求采集见 [当前能力](CURRENT_CAPABILITIES.md)。
+
 Date: 2026-09-11
 
 ## Verified on the active large save
@@ -22,5 +24,5 @@ Live acceptance after the final reload found 1,546 signal-list objects: 1,545 ty
 ## Intentionally unavailable
 
 - Signal aspect/state: `UNKNOWN` until a verified read path is established.
-- Passenger/cargo demand: `UNKNOWN`; the unsafe station UI sampling chain remains disabled after its repeatable native crash.
+- At this 2026-09-11 acceptance, passenger/cargo demand was UNKNOWN. Later line-entity demand collection provides waiting/onboard/OD data; the unsafe station UI sampling chain remains disabled. Generic station snapshot totals are still unavailable. See [current capabilities](CURRENT_CAPABILITIES.md).
 - Vehicles on depot/non-exported edges are omitted from main-network occupancy instead of being falsely attached to nearby track.

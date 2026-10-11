@@ -24,7 +24,7 @@ def main() -> int:
     args = parser.parse_args()
     line_ids = list(dict.fromkeys(args.line_id))
     if args.all_rail:
-        manifest = json.loads((ROOT / "ui" / "rail-map" / "rail-network-data.json").read_text(encoding="utf-8"))
+        manifest = json.loads((ROOT / "var" / "rail-map" / "rail-network-data.json").read_text(encoding="utf-8"))
         line_ids = list(dict.fromkeys([*line_ids, *(int(item["entity_id"]) for item in manifest.get("lines", []))]))
     if not line_ids:
         raise SystemExit("provide --line-id or --all-rail")

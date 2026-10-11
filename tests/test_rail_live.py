@@ -76,6 +76,22 @@ class RailLiveTests(unittest.TestCase):
         self.assertAlmostEqual(72, vehicle["speed_kmh"])
         self.assertAlmostEqual(.5, vehicle["acceleration_mps2"])
 
+    def test_spacing_evidence_is_preserved_in_live_frame(self):
+        envelope = {"complete": True, "expected_parts": 1, "parts": [{
+            "position": {"x": 25, "y": 0, "z": 0},
+            "bounds": {"min": {"x": 20, "y": -2, "z": 0}, "max": {"x": 30, "y": 2, "z": 3}},
+        }]}
+        telemetry = {"vehicles": [{"entity_id": 3, "line_id": 7, "current_edge_id": 10,
+            "current_edge_param": .25, "current_edge_index": 0, "current_edge_direction": True,
+            "path_edge_ids": [10, 11], "path_edge_directions": [True, True],
+            "path_transport_indices": [0, 0], "train_envelope": envelope,
+            "footprint_sampled_at": 1, "brake_decel_mps2": .7}]}
+        vehicle = normalize_live_state(telemetry, NETWORK, MANIFEST, None, 1)["vehicles"][0]
+        self.assertEqual([10, 11], vehicle["path_edge_ids"])
+        self.assertEqual(0, vehicle["current_edge_index"])
+        self.assertTrue(vehicle["footprint_complete"])
+        self.assertEqual(.7, vehicle["brake_decel_mps2"])
+
     def test_transient_unknown_edge_retains_last_valid_position(self):
         first = normalize_live_state({"vehicles": [{
             "entity_id": 3, "name": "Tunnel train", "line_id": 7,

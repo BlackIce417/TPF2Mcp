@@ -54,6 +54,14 @@ _CAPABILITIES: tuple[dict[str, Any], ...] = (
         "limitations": ["Verified only from an unassigned newly bought vehicle to one compatible line at stop_index 0.", "AUTO_SAFE is prohibited by MEDIUM risk."],
     },
     {
+        "operation_type": "REPLACE_VEHICLE_CONFIG", "available": False, "verified": True,
+        "destructive": True, "requires_confirmation": True, "supports_rollback": False, "risk_class": "HIGH",
+        "source": "api.cmd.make.replaceVehicle(vehicleEntity, TransportVehicleConfig)",
+        "source_status": "POSTCONDITION_VERIFIED",
+        "evidence": "diagnostics/rail-operations/replace-vehicle-config/result.json and replace-vehicle-config-add/result.json",
+        "limitations": ["The implementation copies the complete native config from another observed vehicle.", "Live remove/add tests preserved vehicle identity and line assignment and verified consist signatures and capacities (270 -> 120 -> 270)."],
+    },
+    {
         "operation_type": "CREATE_LINE_FROM_SOURCE_ROUTE", "available": False, "verified": True,
         "destructive": False, "requires_confirmation": True, "supports_rollback": False, "risk_class": "MEDIUM",
         "source": "api.cmd.make.createLine(name, Vec3f color, playerEntity, Line)", "source_status": "POSTCONDITION_VERIFIED",
@@ -152,8 +160,8 @@ def capabilities() -> list[dict[str, Any]]:
         item["engine_verified"] = bool(item.get("verified"))
         item["live_mcp_verified"] = bool(item.get("live_mcp_verified", False))
         item["task_live_verified"] = bool(item.get("task_live_verified", False))
-        item["controller_supported"] = item["operation_type"] in {"RENAME_LINE", "BUY_VEHICLE", "ASSIGN_VEHICLE_TO_LINE", "CREATE_LINE_FROM_SOURCE_ROUTE", "CREATE_LINE", "SET_LINE_STOPS", "SET_LINE_STOP_POLICY", "SELL_VEHICLE", "HOLD_VEHICLE_AT_TERMINAL", "RELEASE_VEHICLE_FROM_HOLD"}
-        item["task_supported"] = item["operation_type"] in {"RENAME_LINE", "BUY_VEHICLE", "ASSIGN_VEHICLE_TO_LINE", "CREATE_LINE_FROM_SOURCE_ROUTE", "CREATE_LINE", "SET_LINE_STOPS", "SET_LINE_STOP_POLICY", "SELL_VEHICLE", "HOLD_VEHICLE_AT_TERMINAL", "RELEASE_VEHICLE_FROM_HOLD"}
+        item["controller_supported"] = item["operation_type"] in {"RENAME_LINE", "BUY_VEHICLE", "ASSIGN_VEHICLE_TO_LINE", "REPLACE_VEHICLE_CONFIG", "CREATE_LINE_FROM_SOURCE_ROUTE", "CREATE_LINE", "SET_LINE_STOPS", "SET_LINE_STOP_POLICY", "SELL_VEHICLE", "HOLD_VEHICLE_AT_TERMINAL", "RELEASE_VEHICLE_FROM_HOLD"}
+        item["task_supported"] = item["operation_type"] in {"RENAME_LINE", "BUY_VEHICLE", "ASSIGN_VEHICLE_TO_LINE", "REPLACE_VEHICLE_CONFIG", "CREATE_LINE_FROM_SOURCE_ROUTE", "CREATE_LINE", "SET_LINE_STOPS", "SET_LINE_STOP_POLICY", "SELL_VEHICLE", "HOLD_VEHICLE_AT_TERMINAL", "RELEASE_VEHICLE_FROM_HOLD"}
         item["runtime_enabled"] = False  # Python cannot override Lua's kill switch.
         item["product_ready"] = bool(item["engine_verified"] and item["controller_supported"] and item["task_supported"] and item["live_mcp_verified"] and item["task_live_verified"])
         item["available"] = bool(item["controller_supported"] and item["runtime_enabled"])

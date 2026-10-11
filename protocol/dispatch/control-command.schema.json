@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tpf2-mcp.local/schemas/dispatch/control-command.schema.json",
+  "title": "TPF2 Dispatch Control Command",
+  "type": "object",
+  "required": ["schema_version", "command_id", "type", "save_id", "target", "parameters", "expires_at"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "command_id": {"type": "string", "minLength": 1, "maxLength": 200},
+    "type": {
+      "enum": ["SET_SPEED_LIMIT", "ASSIGN_PLATFORM", "SET_PATH_COST", "REASSIGN_OD", "CANCEL_COMMAND",
+               "PROTECTIVE_STOP", "RESUME_TRAIN", "HOLD_TRAIN", "RELEASE_TRAIN"]
+    },
+    "save_id": {"type": "string", "minLength": 1},
+    "session_id": {"type": "string", "minLength": 1},
+    "topology_version": {"type": ["string", "integer"]},
+    "target": {"type": "object"},
+    "parameters": {"type": "object"},
+    "priority": {"type": "integer", "minimum": 0, "maximum": 100},
+    "expires_at": {"type": "number"},
+    "source": {"type": "string"},
+    "reason": {"type": "string"}
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {"properties": {"type": {"const": "ASSIGN_PLATFORM"}}},
+      "then": {"properties": {"target": {"required": ["vehicle_id"]},
+                               "parameters": {"required": ["station_group_id", "station_index", "terminal_index"]}}}
+    },
+    {
+      "if": {"properties": {"type": {"const": "SET_PATH_COST"}}},
+      "then": {"properties": {"target": {"required": ["vehicle_id"]},
+                               "parameters": {"required": ["edge_ids", "penalty_seconds"]}}}
+    },
+    {
+      "if": {"properties": {"type": {"const": "REASSIGN_OD"}}},
+      "then": {"properties": {"parameters": {"required": ["source_line", "target_line", "source_stop0",
+          "source_stop1", "target_stop0", "target_stop1", "max_assignments", "entity_kind"]}}}
+    },
+    {
+      "if": {"properties": {"type": {"const": "CANCEL_COMMAND"}}},
+      "then": {"properties": {"target": {"required": ["command_id"]}}}
+    }
+  ]
+}

@@ -16,6 +16,37 @@ class BridgeError(RuntimeError):
     pass
 
 
+def _process_exists(process_id: int) -> bool:
+    if process_id <= 0:
+        return False
+    if os.name == "nt":
+        try:
+            import ctypes
+            handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, process_id)
+            if not handle:
+                return False
+            ctypes.windll.kernel32.CloseHandle(handle)
+            return True
+        except (AttributeError, OSError):
+            return True
+    try:
+        os.kill(process_id, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def _orphaned_lock(path: Path) -> bool:
+    try:
+        first = path.read_text(encoding="ascii", errors="ignore").split()[0]
+        process_id = int(first.removeprefix("pid="))
+    except (FileNotFoundError, OSError, ValueError, IndexError):
+        return False
+    return not _process_exists(process_id)
+
+
 @contextmanager
 def _mailbox_lock(directory: Path, timeout_seconds: float, poll_seconds: float):
     """Serialize the bridge's single command slot across UI and MCP processes."""
@@ -29,7 +60,7 @@ def _mailbox_lock(directory: Path, timeout_seconds: float, poll_seconds: float):
             break
         except FileExistsError:
             try:
-                if time.time() - lock_path.stat().st_mtime > 180:
+                if _orphaned_lock(lock_path) or time.time() - lock_path.stat().st_mtime > 180:
                     lock_path.unlink(missing_ok=True)
                     continue
             except FileNotFoundError:
@@ -118,6 +149,42 @@ class BridgeClient:
     def ping(self) -> dict[str, Any]:
         return self.call("ping")
 
+    def probe_vehicle_speed_control(self) -> dict[str, Any]:
+        """Refresh existing Lua discovery sidecars; keep all file I/O here.
+
+        Uses the running Mod's existing protocol, so no reload/hot patch or
+        arbitrary-code execution endpoint is required for this experiment.
+        """
+        from .speed_control_probe import classify_speed_control
+
+        paths = [self.directory / name for name in
+                 ("api-command-inventory.json", "vehicle-write-api-probe.json")]
+
+        def stamp(path: Path) -> tuple[int, int] | None:
+            try:
+                stat = path.stat()
+                return stat.st_mtime_ns, stat.st_size
+            except OSError:
+                return None
+
+        before = [stamp(path) for path in paths]
+        snapshot = self.game_state(force_refresh=True)
+        after = [stamp(path) for path in paths]
+        fresh = all(new is not None and new != old for old, new in zip(before, after))
+        errors = []
+        values = []
+        for path in paths:
+            try:
+                value = _read_json(path)
+                values.append(value if isinstance(value, dict) else {})
+            except BridgeError as exc:
+                errors.append(str(exc))
+                values.append({})
+        result = classify_speed_control(*values, fresh=fresh and not errors)
+        result.update(snapshot_sequence=snapshot.get("sequence"), errors=errors,
+                      sampled_at=time.time(), source="LIVE_BRIDGE_REFRESH")
+        return result
+
     def game_state(self, force_refresh: bool = False) -> dict[str, Any]:
         return self.call("get_game_state", {"force_refresh": force_refresh})
 
@@ -159,6 +226,10 @@ class MockBridge:
 
     def ping(self) -> dict[str, Any]:
         return {"message": "pong", "mock": True}
+
+    def probe_vehicle_speed_control(self) -> dict[str, Any]:
+        from .speed_control_probe import classify_speed_control
+        return {**classify_speed_control({}, {}, fresh=False), "source": "MOCK", "mock": True}
 
     def game_state(self, force_refresh: bool = False) -> dict[str, Any]:
         return json.loads(self.fixture.read_text(encoding="utf-8"))

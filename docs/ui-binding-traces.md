@@ -1,5 +1,7 @@
 # Native UI binding traces
 
+> 2026-09-25 状态校订：本文为阶段记录或特定数据源/Schema 的历史说明，保留原结论以供追溯。载荷/候车量不可用不能推广为后续所有接口不可用；独立 line_demand 已提供客货计数和线路停站 OD，旧快照字段未必更新。当前入口与限制见 [CURRENT_CAPABILITIES.md](CURRENT_CAPABILITIES.md)。
+
 This document records source-level traces from the locally installed TPF2 Lua files. A trace only becomes an MCP source after a live, read-only probe succeeds.
 
 ## Contexts

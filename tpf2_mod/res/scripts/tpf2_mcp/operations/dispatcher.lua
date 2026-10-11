@@ -6,6 +6,7 @@ local timetable = require "tpf2_mcp/operations/timetable_controller"
 local M = {}
 local executed = {}
 local departure_control = {}
+local movement_control = {}
 
 local function now() return os and os.time and os.time() or 0 end
 
@@ -28,6 +29,25 @@ local function send_departure_command(vehicle_id, manual, force_departure)
     return true
 end
 
+local function send_user_stopped(vehicle_id, stopped)
+    local make_ok, engine_command = pcall(api.cmd.make.setUserStopped, vehicle_id, stopped)
+    if not make_ok or engine_command == nil then return false, "SET_USER_STOPPED_FAILED:" .. tostring(engine_command) end
+    movement_control[vehicle_id] = { stopped = stopped, command_confirmed = false, updated_at = now() }
+    local send_ok, send_error = pcall(api.cmd.sendCommand, engine_command, function(_, success)
+        local state = movement_control[vehicle_id]
+        if state ~= nil and state.stopped == stopped then state.command_confirmed = success == true end
+    end)
+    if not send_ok then movement_control[vehicle_id] = nil; return false, tostring(send_error) end
+    return true
+end
+
+function M.movement_control(vehicle_id)
+    local value = movement_control[vehicle_id]
+    if value == nil then return nil end
+    return { stopped = value.stopped, command_confirmed = value.command_confirmed,
+             updated_at = value.updated_at, expires_at = value.expires_at }
+end
+
 function M.departure_control(vehicle_id)
     local value = departure_control[vehicle_id]
     if value == nil then return nil end
@@ -48,6 +68,11 @@ function M.tick()
             send_departure_command(vehicle_id, false, true)
         end
     end
+    for vehicle_id, value in pairs(movement_control) do
+        if value.stopped == true and type(value.expires_at) == "number" and current >= value.expires_at then
+            send_user_stopped(vehicle_id, false)
+        end
+    end
 end
 
 local function reject(code, message)
@@ -64,6 +89,16 @@ function M.dispatch(command)
     end
     if type(command.operation_id) ~= "string" or command.operation_id == "" then return reject("INVALID_REQUEST", "operation_id is required") end
     if executed[command.operation_id] then return true, { accepted = true, engine_command_sent = false, code = "ALREADY_EXECUTED", operation_id = command.operation_id } end
+    if operation_type == "DISABLE_WRITE_OPERATIONS" then
+        -- One-way in-memory kill switch for bounded live acceptance.  A file
+        -- change cannot revoke permissions from an already loaded Lua module,
+        -- so the test harness must be able to fail closed without a reload.
+        executed[command.operation_id] = true
+        if type(config.disable_write_operations) == "function" then config.disable_write_operations()
+        else config.allow_write_operations, config.allowed_operations = false, {} end
+        return true, { accepted = true, engine_command_sent = false, code = "WRITE_DISABLED",
+            operation_id = command.operation_id }
+    end
     if operation_type == "CREATE_LINE" then
         local parameters = command.parameters
         if type(parameters) ~= "table" or type(parameters.name) ~= "string" or parameters.name == "" then return reject("INVALID_PARAMETERS", "CREATE_LINE requires non-empty name") end
@@ -146,6 +181,32 @@ function M.dispatch(command)
         executed[command.operation_id] = true
         return true, { accepted = true, engine_command_sent = true, code = "EXECUTED", operation_id = command.operation_id, vehicle_id = target.vehicle_id }
     end
+    if operation_type == "STOP_VEHICLE" then
+        local target, parameters = command.target, command.parameters
+        local maximum = type(parameters) == "table" and parameters.max_stop_seconds or nil
+        if type(target) ~= "table" or type(target.vehicle_id) ~= "number" or type(maximum) ~= "number" or maximum < 5 or maximum > 120 then
+            return reject("INVALID_PARAMETERS", "STOP_VEHICLE requires vehicle_id and max_stop_seconds 5..120")
+        end
+        local vehicle_ok, vehicle = pcall(game.interface.getEntity, target.vehicle_id)
+        if not vehicle_ok or vehicle == nil then return reject("VEHICLE_NOT_FOUND", "Vehicle was not found") end
+        local sent, send_error = send_user_stopped(target.vehicle_id, true)
+        if not sent then return reject("ENGINE_ERROR", send_error) end
+        movement_control[target.vehicle_id].expires_at = now() + maximum
+        executed[command.operation_id] = true
+        return true, { accepted = true, engine_command_sent = true, code = "EXECUTED",
+            operation_id = command.operation_id, vehicle_id = target.vehicle_id, max_stop_seconds = maximum }
+    end
+    if operation_type == "START_VEHICLE" then
+        local target = command.target
+        if type(target) ~= "table" or type(target.vehicle_id) ~= "number" then return reject("INVALID_PARAMETERS", "START_VEHICLE requires vehicle_id") end
+        local vehicle_ok, vehicle = pcall(game.interface.getEntity, target.vehicle_id)
+        if not vehicle_ok or vehicle == nil then return reject("VEHICLE_NOT_FOUND", "Vehicle was not found") end
+        local sent, send_error = send_user_stopped(target.vehicle_id, false)
+        if not sent then return reject("ENGINE_ERROR", send_error) end
+        executed[command.operation_id] = true
+        return true, { accepted = true, engine_command_sent = true, code = "EXECUTED",
+            operation_id = command.operation_id, vehicle_id = target.vehicle_id }
+    end
     if operation_type == "APPLY_LINE_TIMETABLE" then
         local target, parameters = command.target, command.parameters
         if type(target) ~= "table" or type(target.line_id) ~= "number" then return reject("INVALID_PARAMETERS", "APPLY_LINE_TIMETABLE requires line_id") end
@@ -176,6 +237,24 @@ function M.dispatch(command)
         if not send_ok then return reject("ENGINE_ERROR", tostring(send_error)) end
         executed[command.operation_id] = true
         return true, { accepted = true, engine_command_sent = true, code = "EXECUTED", operation_id = command.operation_id, source_vehicle_id = target.source_vehicle_id, depot_id = target.depot_id }
+    end
+    if operation_type == "REPLACE_VEHICLE_CONFIG" then
+        local target, parameters = command.target, command.parameters
+        if type(target) ~= "table" or type(target.vehicle_id) ~= "number" or type(parameters) ~= "table" or type(parameters.source_vehicle_id) ~= "number" then return reject("INVALID_PARAMETERS", "REPLACE_VEHICLE_CONFIG requires vehicle_id and source_vehicle_id") end
+        local expected = "REPLACE_VEHICLE_CONFIG:" .. tostring(target.vehicle_id) .. ":" .. tostring(parameters.source_vehicle_id)
+        if parameters.confirmation ~= expected then return reject("CONFIRMATION_REQUIRED", "Exact target/source confirmation is required") end
+        local component_type = api.type.ComponentType.TRANSPORT_VEHICLE
+        local target_ok, target_vehicle = pcall(api.engine.getComponent, target.vehicle_id, component_type)
+        local source_ok, source_vehicle = pcall(api.engine.getComponent, parameters.source_vehicle_id, component_type)
+        local source_config = source_ok and source_vehicle and source_vehicle.transportVehicleConfig or nil
+        if not target_ok or target_vehicle == nil then return reject("VEHICLE_NOT_FOUND", "Target vehicle was not found") end
+        if source_config == nil then return reject("SOURCE_CONFIG_UNAVAILABLE", "Source vehicle config was unavailable") end
+        local command_ok, engine_command = pcall(api.cmd.make.replaceVehicle, target.vehicle_id, source_config)
+        if not command_ok or engine_command == nil then return reject("ENGINE_ERROR", tostring(engine_command)) end
+        local send_ok, send_error = pcall(api.cmd.sendCommand, engine_command, function() end)
+        if not send_ok then return reject("ENGINE_ERROR", tostring(send_error)) end
+        executed[command.operation_id] = true
+        return true, { accepted = true, engine_command_sent = true, code = "EXECUTED", operation_id = command.operation_id, vehicle_id = target.vehicle_id, source_vehicle_id = parameters.source_vehicle_id }
     end
     if operation_type == "ASSIGN_VEHICLE_TO_LINE" then
         local target = command.target

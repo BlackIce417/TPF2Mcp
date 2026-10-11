@@ -12,7 +12,7 @@ class SnapshotIndexTests(unittest.TestCase):
 
     def test_builds_verified_reverse_indexes(self):
         self.assertEqual([50, 51], [item["entity_id"] for item in self.index.vehicles_by_line[40]])
-        self.assertEqual([40, 40], [item["entity_id"] for item in self.index.lines_by_station[30]])
+        self.assertEqual([40], [item["entity_id"] for item in self.index.lines_by_station[30]])
         self.assertEqual([], self.index.unresolved_stop_references)
 
     def test_line_summary_resolves_stations_and_vehicles(self):

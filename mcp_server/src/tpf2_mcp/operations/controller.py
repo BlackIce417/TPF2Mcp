@@ -52,6 +52,16 @@ class OperationController:
                     return {"status": "ENTITY_NOT_FOUND", "reason": f"source vehicle {parameters['source_vehicle_id']} not found"}
                 operation_target = {"entity_type": "DEPOT", "entity_id": target["depot_id"], "depot_id": target["depot_id"], "source_vehicle_id": parameters["source_vehicle_id"]}
                 expected_state = {"vehicle_ids": sorted(index.vehicle_by_id)}
+            elif operation_type == "REPLACE_VEHICLE_CONFIG":
+                vehicle = index.vehicle_by_id.get(target["vehicle_id"])
+                source = index.vehicle_by_id.get(parameters["source_vehicle_id"])
+                if vehicle is None or source is None:
+                    missing = target["vehicle_id"] if vehicle is None else parameters["source_vehicle_id"]
+                    return {"status": "ENTITY_NOT_FOUND", "reason": f"vehicle {missing} not found"}
+                operation_target = {"entity_type": "VEHICLE", "entity_id": target["vehicle_id"], "vehicle_id": target["vehicle_id"]}
+                expected_state = {"line_id": vehicle.get("line_id"), "name": vehicle.get("name"),
+                                  "consist_signature": vehicle.get("consist_signature"),
+                                  "capacity_total": vehicle.get("capacity_total")}
             elif operation_type == "CREATE_LINE_FROM_SOURCE_ROUTE":
                 source = self._line(index, target["source_line_id"])
                 if source is None:
@@ -158,6 +168,13 @@ class OperationController:
                 checks.append({"check": "SOURCE_VEHICLE_EXISTS", "status": "PASS" if exists else "FAIL", "entity_id": source_id})
                 unchanged = sorted(index.vehicle_by_id) == operation["expected_entity_state"]["vehicle_ids"]
                 checks.append({"check": "FLEET_STATE_UNCHANGED", "status": "PASS" if unchanged else "FAIL"})
+            elif operation["operation_type"] == "REPLACE_VEHICLE_CONFIG":
+                vehicle = index.vehicle_by_id.get(operation["target"]["vehicle_id"])
+                source = index.vehicle_by_id.get(operation["parameters"]["source_vehicle_id"])
+                checks.append({"check": "SOURCE_AND_TARGET_EXIST", "status": "PASS" if vehicle and source else "FAIL"})
+                observed = {key: vehicle.get(key) for key in ("line_id", "name", "consist_signature", "capacity_total")} if vehicle else None
+                checks.append({"check": "TARGET_CONFIG_UNCHANGED", "status": "PASS" if observed == operation["expected_entity_state"] else "FAIL",
+                               "expected": operation["expected_entity_state"], "actual": observed})
             elif operation["operation_type"] == "CREATE_LINE_FROM_SOURCE_ROUTE":
                 source_id = operation["target"]["source_line_id"]
                 source = self._line(index, source_id)

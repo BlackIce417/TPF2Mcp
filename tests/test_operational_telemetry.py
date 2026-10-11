@@ -57,6 +57,14 @@ class OperationalTelemetryTests(unittest.TestCase):
         self.assertIn('snapshot_path = client.directory / "state.json"', source)
         self.assertNotIn('operational_telemetry("stations")', source)
 
+    def test_lua_runtime_periodically_publishes_live_vehicle_positions(self):
+        config = (ROOT / "tpf2_mod" / "res" / "scripts" / "tpf2_mcp" / "config.lua").read_text(encoding="utf-8")
+        runtime = (ROOT / "tpf2_mod" / "res" / "scripts" / "tpf2_mcp" / "runtime.lua").read_text(encoding="utf-8")
+        self.assertIn("vehicle_telemetry_report_interval_seconds = 0.2", config)
+        self.assertIn('state.operational_telemetry("vehicle_positions")', runtime)
+        self.assertIn('telemetry.report_mode = "PERIODIC"', runtime)
+        self.assertIn('write_json("operational-telemetry-vehicle_positions.json"', runtime)
+
 
 if __name__ == "__main__":
     unittest.main()

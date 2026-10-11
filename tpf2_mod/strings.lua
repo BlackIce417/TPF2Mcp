@@ -12,9 +12,9 @@ python start_server.py
 
 This is a stdio MCP server. Configure the same directory and command in your MCP client.
 
-Web UI: in the same directory run:
-python start_ui.py
-Then open http://127.0.0.1:8765/?view=network in a browser. Keep this terminal open while using the UI. The published package is read-only by default.]],
+Web API: in the same directory run:
+python start_api.py
+In another terminal, enter ui/rail-map, run npm install and npm run dev, then open http://127.0.0.1:5173/?view=network. Keep both terminals open. The published package is read-only by default.]],
         },
         zh = {
             TPF2_MCP_NAME = "tpf2mcp",
@@ -28,9 +28,9 @@ python start_server.py
 
 这是 stdio MCP 服务；请在 MCP 客户端中配置相同的工作目录和命令。
 
-查看前端：在同一目录执行：
-python start_ui.py
-然后用浏览器打开 http://127.0.0.1:8765/?view=network。使用前端期间请保持该终端运行。发布包默认只读。]],
+Web API：在同一目录执行：
+python start_api.py
+另开终端进入 ui/rail-map，执行 npm install 和 npm run dev，然后用浏览器打开 http://127.0.0.1:5173/?view=network。使用期间请保持两个终端运行。发布包默认只读。]],
         },
     }
 end

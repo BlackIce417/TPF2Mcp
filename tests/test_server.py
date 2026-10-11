@@ -1,8 +1,11 @@
 import unittest
+import json
 from pathlib import Path
 
 from tpf2_mcp.bridge import MockBridge
+from tpf2_mcp.dispatch import station_waiting_state, vehicle_dispatch_state
 from tpf2_mcp.server import handle
+from tpf2_mcp.snapshot import SnapshotIndex
 
 
 class ServerTests(unittest.TestCase):
@@ -62,6 +65,72 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(0, vehicle["result"]["structuredContent"]["load"]["passengers"])
         guide = handle({"id": 56, "method": "resources/read", "params": {"uri": "tpf2://agent-operations"}}, bridge)
         self.assertIn("get_vehicle_dispatch_state", guide["result"]["contents"][0]["text"])
+
+    def test_station_dispatch_aggregates_directional_waiting_demand(self):
+        class DemandBridge(MockBridge):
+            def line_demand(self, line_id: int, maximum_entities: int = 20000):
+                value = super().line_demand(line_id, maximum_entities)
+                if line_id != 40:
+                    return value
+                value.update(source_status="ENGINE_COMPONENT_CLASSIFIED", errors={})
+                value["passengers"] = {
+                    "waiting": 15, "truncated": False, "journey_granularity": "LINE_STOP_OD",
+                    "by_journey": [
+                        {"line_stop_0": 0, "line_stop_1": 1, "waiting": 5},
+                        {"line_stop_0": 1, "line_stop_1": 2, "waiting": 7},
+                        {"line_stop_0": 2, "line_stop_1": 1, "waiting": 3},
+                    ],
+                }
+                value["cargo"] = {
+                    "waiting": 10, "truncated": False, "journey_granularity": "LINE_STOP_OD",
+                    "by_journey": [
+                        {"line_stop_0": 0, "line_stop_1": 1, "waiting": 4,
+                         "by_cargo": [{"cargo_id": 1, "waiting": 4}]},
+                        {"line_stop_0": 1, "line_stop_1": 2, "waiting": 6,
+                         "by_cargo": [{"cargo_id": 1, "waiting": 6}]},
+                    ],
+                }
+                return value
+
+        bridge = DemandBridge(Path(__file__).parent / "fixtures" / "world_snapshot_001.json")
+        response = handle({"id": 57, "method": "tools/call", "params": {
+            "name": "get_station_dispatch_state", "arguments": {"station_id": 30, "maximum_entities": 1000}}}, bridge)
+        waiting = response["result"]["structuredContent"]["waiting"]
+        self.assertEqual(8, waiting["passengers"]["waiting"])
+        self.assertEqual(4, waiting["cargo"]["waiting"])
+        self.assertEqual(4, waiting["cargo"]["by_cargo"][0]["waiting"])
+        self.assertEqual([0, 2], waiting["lines"][0]["line_stop_indices"])
+        self.assertTrue(waiting["quality"]["complete"])
+
+    def test_vehicle_dispatch_marks_truncated_or_failed_load_incomplete(self):
+        fixture = Path(__file__).parent / "fixtures" / "world_snapshot_001.json"
+        index = SnapshotIndex(json.loads(fixture.read_text(encoding="utf-8")))
+        truncated = vehicle_dispatch_state(index, 50, {"line_id": 40}, {
+            "source_status": "ENGINE_COMPONENT_CLASSIFIED", "errors": {},
+            "passengers": {"vehicles": {"50": 12}, "truncated": True},
+            "cargo": {"vehicles": {}, "truncated": False, "by_cargo": []},
+        })
+        self.assertTrue(truncated["availability"]["load"])
+        self.assertFalse(truncated["availability"]["complete_load"])
+        self.assertIsNone(truncated["load"]["occupancy_ratio"])
+        failed = vehicle_dispatch_state(index, 50, {"line_id": 40}, {
+            "errors": {"persons": "probe failed"}, "passengers": {"vehicles": {}}, "cargo": {"vehicles": {}}})
+        self.assertFalse(failed["availability"]["load"])
+        self.assertIsNone(failed["load"]["passengers"])
+
+    def test_station_waiting_preserves_available_kind_when_other_probe_fails(self):
+        fixture = Path(__file__).parent / "fixtures" / "world_snapshot_001.json"
+        index = SnapshotIndex(json.loads(fixture.read_text(encoding="utf-8")))
+        waiting = station_waiting_state(index, 30, {40: {
+            "errors": {"cargo": "probe failed"},
+            "passengers": {"waiting": 5, "truncated": False,
+                           "by_journey": [{"line_stop_0": 0, "line_stop_1": 1, "waiting": 5}]},
+            "cargo": {"status": "UNAVAILABLE"},
+        }})
+        self.assertEqual(5, waiting["passengers"]["waiting"])
+        self.assertIsNone(waiting["cargo"]["waiting"])
+        self.assertEqual([40], waiting["quality"]["unavailable_by_kind"]["cargo"])
+        self.assertEqual([], waiting["quality"]["unavailable_by_kind"]["passengers"])
 
     def test_network_summary_tool(self):
         response = handle({"id": 6, "method": "tools/call", "params": {"name": "get_transport_network_summary", "arguments": {}}}, self.bridge())

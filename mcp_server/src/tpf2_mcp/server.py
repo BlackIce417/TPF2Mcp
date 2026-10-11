@@ -13,7 +13,7 @@ from .analytics import NetworkIntelligenceIndex
 from .planning import DecisionSupport
 from .operations import OperationController, capabilities as operation_capabilities
 from .tasks import TaskOrchestrator, goal_capabilities
-from .dispatch import agent_operations_guide, vehicle_dispatch_state
+from .dispatch import agent_operations_guide, station_waiting_state, vehicle_dispatch_state
 
 
 def _bridge() -> BridgeClient | MockBridge:
@@ -122,6 +122,7 @@ def handle(message: dict[str, Any], bridge: BridgeClient | MockBridge) -> dict[s
             {"name": "get_bridge_status", "description": "Return TPF2 bridge liveness and probe state.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
             {"name": "get_game_state", "description": "Return normalized world metadata, game, company, counts, and snapshot age. Set force_refresh to bypass bridge and MCP snapshot caches.", "inputSchema": {"type": "object", "properties": {"force_refresh": {"type": "boolean"}}, "additionalProperties": False}},
             {"name": "get_world_snapshot", "description": "Return the complete latest normalized world snapshot. Set force_refresh to bypass bridge and MCP snapshot caches.", "inputSchema": {"type": "object", "properties": {"force_refresh": {"type": "boolean"}}, "additionalProperties": False}},
+            {"name": "probe_vehicle_speed_control", "description": "Read-only experiment: refresh engine API inventories and look for per-vehicle speed setters. Never executes a candidate or changes train speed; missing/stale evidence remains UNKNOWN.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}, "annotations": {"readOnlyHint": True}},
             {"name": "get_cargo_types", "description": "Return dynamically enumerated cargo types from TPF2's cargo repository.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
             {"name": "get_towns", "description": "Return towns from the latest normalized world snapshot.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
             {"name": "get_town", "description": "Return one town by its TPF2 entity ID.", "inputSchema": {"type": "object", "properties": {"entity_id": {"type": "integer"}}, "required": ["entity_id"], "additionalProperties": False}},
@@ -129,7 +130,7 @@ def handle(message: dict[str, Any], bridge: BridgeClient | MockBridge) -> dict[s
             *[{"name": f"get_{singular}", "description": f"Return one {singular} by TPF2 entity ID.", "inputSchema": {"type": "object", "properties": {"entity_id": {"type": "integer"}}, "required": ["entity_id"], "additionalProperties": False}} for singular in ("industry", "station", "line", "vehicle")],
             {"name": "get_line_summary", "description": "Return a line with its resolved station groups and assigned vehicles.", "inputSchema": {"type": "object", "properties": {"line_id": {"type": "integer"}}, "required": ["line_id"], "additionalProperties": False}},
             {"name": "get_dispatch_overview", "description": "Agent-oriented compact operating entry point: game state, network counts, capabilities, and safe control workflow.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-            {"name": "get_station_dispatch_state", "description": "Return one station's identity, connected lines, neighboring stations, and verified operating availability for dispatch decisions.", "inputSchema": {"type": "object", "properties": {"station_id": {"type": "integer"}}, "required": ["station_id"], "additionalProperties": False}},
+            {"name": "get_station_dispatch_state", "description": "Return one station's identity, connected lines, neighboring stations, and line-assigned waiting passenger/cargo counts with explicit quality metadata.", "inputSchema": {"type": "object", "properties": {"station_id": {"type": "integer"}, "maximum_entities": {"type": "integer", "minimum": 100, "maximum": 50000}}, "required": ["station_id"], "additionalProperties": False}},
             {"name": "get_line_dispatch_state", "description": "Return one line's topology, fleet, structural diagnosis, and live Bridge-classified passenger/cargo demand.", "inputSchema": {"type": "object", "properties": {"line_id": {"type": "integer"}, "maximum_entities": {"type": "integer", "minimum": 1, "maximum": 100000}}, "required": ["line_id"], "additionalProperties": False}},
             {"name": "get_vehicle_dispatch_state", "description": "Return one vehicle's current speed/state, next stop, capacity, and Bridge-classified onboard passenger/cargo counts.", "inputSchema": {"type": "object", "properties": {"vehicle_id": {"type": "integer"}, "maximum_entities": {"type": "integer", "minimum": 1, "maximum": 100000}}, "required": ["vehicle_id"], "additionalProperties": False}},
             {"name": "get_agent_operations_guide", "description": "Return the canonical MCP-only read, proposal, approval, execution, and verification workflow for an operating agent.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
@@ -213,6 +214,10 @@ def handle(message: dict[str, Any], bridge: BridgeClient | MockBridge) -> dict[s
             name = params.get("name")
             if name == "get_bridge_status":
                 return {"jsonrpc": "2.0", "id": request_id, "result": _tool_result(bridge.status())}
+            if name == "probe_vehicle_speed_control":
+                if params.get("arguments", {}):
+                    return _error(-32602, "probe_vehicle_speed_control accepts no arguments or write options", request_id)
+                return {"jsonrpc": "2.0", "id": request_id, "result": _tool_result(bridge.probe_vehicle_speed_control())}
             if name == "get_game_state":
                 force_refresh = params.get("arguments", {}).get("force_refresh", False)
                 if not isinstance(force_refresh, bool): return _error(-32602, "force_refresh must be a boolean", request_id)
@@ -252,12 +257,22 @@ def handle(message: dict[str, Any], bridge: BridgeClient | MockBridge) -> dict[s
                           "data_capabilities": index.capabilities(), "agent_workflow": agent_operations_guide()}
                 return {"jsonrpc": "2.0", "id": request_id, "result": _tool_result(result)}
             if name == "get_station_dispatch_state":
-                station_id = params.get("arguments", {}).get("station_id")
+                arguments = params.get("arguments", {}); station_id = arguments.get("station_id"); maximum = arguments.get("maximum_entities", 20000)
                 if not isinstance(station_id, int): return _error(-32602, "station_id must be an integer", request_id)
+                if not isinstance(maximum, int) or isinstance(maximum, bool) or not 100 <= maximum <= 50000: return _error(-32602, "maximum_entities must be an integer from 100 to 50000", request_id)
                 index = _index(bridge); station = index.station_operating_state(station_id); connectivity = index.station_connectivity(station_id)
                 if station is None: return _error(-32001, f"ENTITY_NOT_FOUND: station {station_id}", request_id)
-                lines = [index.line_summary(line_id) for line_id in index._station(index.station_by_id[station_id]).get("line_ids", [])]
-                return {"jsonrpc": "2.0", "id": request_id, "result": _tool_result({"schema_version": 1, "station": station, "connectivity": connectivity, "lines": lines})}
+                line_ids = sorted({line["entity_id"] for line in index.lines_by_station.get(station_id, []) if isinstance(line.get("entity_id"), int)})
+                lines = [index.line_summary(line_id) for line_id in line_ids]
+                demands = {}
+                for line_id in line_ids:
+                    try:
+                        demands[line_id] = bridge.line_demand(line_id, maximum)
+                    except BridgeError as exc:
+                        demands[line_id] = {"line_id": line_id, "passengers": {"status": "UNAVAILABLE"},
+                                            "cargo": {"status": "UNAVAILABLE"}, "errors": {"bridge": str(exc)}}
+                waiting = station_waiting_state(index, station_id, demands)
+                return {"jsonrpc": "2.0", "id": request_id, "result": _tool_result({"schema_version": 1, "station": station, "connectivity": connectivity, "lines": lines, "waiting": waiting})}
             if name == "get_line_dispatch_state":
                 arguments = params.get("arguments", {}); line_id = arguments.get("line_id"); maximum = arguments.get("maximum_entities", 20000)
                 if not isinstance(line_id, int): return _error(-32602, "line_id must be an integer", request_id)

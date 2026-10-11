@@ -1,34 +1,39 @@
 # TPF2 局部线路图
 
-这是一个 HTML 模板 + JavaScript + SVG 的只读视图。通过本机 HTTP 服务打开
-`index.html`，即可查看最近一次从游戏引擎导出的物理轨道数据。
+循环运行图的实时预览、时间轴和观测边界见 [运行图说明](../../docs/TIMETABLE.md)。
+
+这是一个与 Python 后端完全分离的 Vite 前端。FastAPI 只提供 `/api/*` JSON/SSE，
+Vite 独立提供 HTML、CSS 和 JavaScript。详细规则见
+[前端架构与编码规范](../../docs/frontend-architecture.md)。
 
 ## 前端文件分工
 
-- `index.html`：站场图页面结构，不放样式和业务脚本。
-- `network.css`：站场图全部样式。
-- `network-page.js`：站场图页面级事件，例如页面导航。
-- `template-runtime.js`：加载外部 HTML 模板并提供字段、插槽填充工具。
-- `templates/*.html`：侧栏、详情、表格行等可人工维护的 HTML 结构与固定文字。
-- `vendor/jquery-4.0.0.min.js`：本地固定版本的 jQuery 完整构建。
-- `network-app.js`：全网路网 SVG 渲染、交互和动态数据绑定，不存放侧栏 HTML。
-- `timetable.html`：运行图页面结构，不放样式和业务脚本。
-- `timetable.css`：运行图全部样式。
-- `timetable-page.js`：运行图页面级事件，例如返回站场图。
-- `timetable.js`：运行图的数据读取、计算和 SVG 绘制，列表与详情来自 HTML 模板。
-- `app.js`：按所选车站加载静态站场拓扑缓存，并绘制局部预览。
+- `src/*.html`：四个页面入口，只存放页面语义结构。
+- `src/pages/network/`：全网站场图、局部站场图及页面协调代码。
+- `src/pages/regions/`：调度区状态、彩色概览矢量图、侧栏和运行状态组件。
+- `src/pages/timetable/`：运行图页面逻辑和 SVG 绘制。
+- `src/shared/`：HTTP、DOM、导航、时间和公共控制组件。
+- `src/styles/`：各页面样式。
+- `src/templates/`：侧栏、详情、表格行等可维护的 HTML 片段。
+- `public/vendor/`：暂未移除的固定版本第三方浏览器库。
+- `package.json`、`vite.config.mjs`：前端命令、开发代理和构建配置。
 
 HTML 内禁止新增 `<style>`、`style` 属性、无 `src` 的 `<script>` 和 `onclick` 等内联事件。
 页面中需要调整文字或字段容器时改 HTML，需要调整外观时改对应 CSS，需要调整
-数据和行为时改对应 JS。`rail-network-*.js/json`、`rail-network-tiles/` 和
-`station-previews/` 是生成数据，不属于手工维护的页面代码。
+数据和行为时改对应 JS。铁路 JSON、瓦片和车站预览属于后端运行缓存，统一位于
+项目根目录 `var/rail-map/`，前端只能通过 `/api/*` 读取，不能直接引用这些文件。
 
-从 jQuery 接入后的新功能开始，DOM 查询与修改、事件绑定和 HTTP 请求统一使用
-jQuery。现有原生 JavaScript 暂不做批量重构，后续在修改相应模块时逐步迁移。
+新代码统一使用浏览器原生 ES Modules 和 DOM API，不再新增 jQuery 依赖。旧页面中的
+jQuery 在修改相应模块时逐步迁移。
 
-外部模板通过 `fetch` 按启动顺序一次性载入，因此不再支持双击 `index.html` 的
-`file://` 运行方式；请使用下文的 `serve-rail-map.py`。模板仅包含侧栏 DOM，轨道、
+外部模板通过 `fetch` 按启动顺序一次性载入，因此不再支持双击 `src/index.html` 的
+`file://` 运行方式；请使用下文的 Vite 服务。模板仅包含侧栏 DOM，轨道、
 站台、道岔、车辆和信号等坐标图形仍由 JavaScript 根据游戏数据动态创建 SVG。
+
+调度区总览直接复用全局路网的简化物理底图。后端生成调度区数据时按 edge
+归属合并并简化彩色概览链；放大达到全局路网相同阈值后，前端按视口读取
+`/api/rail/tile/*` 原始轨道瓦片，并按 edge 区间归属着色。缩回远景时卸载精细
+瓦片。拖动仍通过 `requestAnimationFrame` 合帧。
 
 前端支持鼠标滚轮缩放、按住拖拽平移，以及 `+`、`−`、`复位` 控件；
 缩放范围为 50%–800%。左下角标尺的屏幕长度固定，默认 100% 时表示
@@ -44,7 +49,7 @@ jQuery。现有原生 JavaScript 暂不做批量重构，后续在修改相应�
 站名，鼠标进入车站范围时也会显示站名提示。
 
 左上角的 `局部` / `全网` 用于切换同一页面的两个层级。全网视图启动时只读取
-轻量的 `rail-network-manifest.js`，显示线路总览骨架、铁路车站和区域索引；双击
+轻量的 `/api/rail/manifest` JSON，显示线路总览骨架、铁路车站和区域索引；双击
 站点可放大到站场级。右侧线路列表仅显示线路名称和停站数量，点击不触发地图
 操作。全网和局部图只使用统一颜色绘制物理路网，不渲染最短路推导的彩色线路
 覆盖层，也不提供线路选择高亮。
@@ -71,16 +76,24 @@ python tools\export-rail-network-map.py
 当前实机导出包含 19,878 个物理铁路节点、20,401 条边、86 个铁路站组和
 46 条铁路线路；46 条线路全部完成物理图寻路，断开区段为 0。
 
-推荐通过本机只读服务打开页面：
+先启动 FastAPI/Uvicorn JSON API；控制系统默认 `DISABLED`，未显式切换到
+`SHADOW` 或带当前存档确认的 `ARMED` 前不会写入游戏：
 
 ```powershell
-python tools\serve-rail-map.py
+python mcp_server\start_api.py
+cd ui\rail-map
+npm install
+npm run dev
 ```
 
-然后访问 `http://127.0.0.1:8765/?view=network`。服务提供按需区域 JSON API
+然后访问 `http://127.0.0.1:5173/?view=network`。后端提供按需区域 JSON API
 和 SSE 状态流；页面会显示 Bridge 在线状态及 snapshot sequence。Bridge 中的
 `rail-network.json` 发生变化时，服务自动重建分片并通知页面刷新。服务不会
 自行周期性触发完整游戏铁路扫描，避免影响游戏帧率。
+
+页面顶栏显示控制生命周期、活动租约、最近动作和熔断原因，并提供紧急停用。
+命令行可使用 `python tools\control-system.py status|shadow|arm|disable|stop`；
+`arm` 会读取当前 `save_id` 并提交精确确认，所有执行仍受 Mod 写权限白名单约束。
 
 Bridge 产生当前存档的铁路拓扑后，`export-rail-network-map.py` 会遍历全部车站，
 为每个车站生成一份独立的静态物理拓扑缓存。全网选择车站后点击“局部”，页面
@@ -99,10 +112,10 @@ $env:PYTHONPATH = (Join-Path (Get-Location) 'mcp_server\src')
 python tools\export-rail-network-map.py
 ```
 
-数据文件：
+数据文件均生成到项目根目录 `var/rail-map/`：
 
 - `rail-network-data.json`：完整铁路图及线路物理寻路结果（离线诊断源）。
-- `rail-network-manifest.js`：浏览器启动时加载的轻量总览与区域索引。
+- `rail-network-manifest.json`：后端通过 `/api/rail/manifest` 返回的轻量总览与区域索引。
 - `rail-network-tiles/`：进入对应区域后才动态加载的原始轨道分片。
 - `station-previews/manifest.json`：当前存档全部车站缓存索引。
 - `station-previews/station-<ID>.json`：指定车站的轨道、站台、道岔和局部台账。

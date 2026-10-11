@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "title": "Regional coordination result v1",
+  "type": "object", "required": ["command_id", "status", "at", "game_write"],
+  "properties": {
+    "command_id": {"type": "string"}, "at": {"type": "number"}, "game_write": {"const": false},
+    "status": {"enum": ["REGISTERED", "ALREADY_REGISTERED", "REQUESTED", "ACCEPTED", "ENTERED", "CLEARING", "RELEASED", "CANCELLED", "REJECTED"]},
+    "reason": {"type": "string"}, "scope": {"type": "string"}, "sequence": {"type": "integer"}
+  }, "additionalProperties": false
+}

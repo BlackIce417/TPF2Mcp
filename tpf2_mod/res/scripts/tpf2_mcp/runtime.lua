@@ -9,6 +9,7 @@ local sequence = 0
 local probe = { attempted = false }
 local started = false
 local update_count = 0
+local last_footprint_update = -5
 
 local function path(name)
     if type(config.bridge_dir) ~= "string" or config.bridge_dir == "" then return nil end
@@ -124,6 +125,12 @@ local function run_probe()
 end
 
 local function heartbeat()
+    if type(config.refresh_permissions) == "function" then config.refresh_permissions() end
+    local allowed_operations = {}
+    for operation_type, enabled in pairs(config.allowed_operations or {}) do
+        if enabled == true then allowed_operations[#allowed_operations + 1] = operation_type end
+    end
+    table.sort(allowed_operations)
     return {
         schema_version = config.schema_version,
         game_running = true,
@@ -138,6 +145,8 @@ local function heartbeat()
         module_path = config.module_path,
         path_resolution = config.path_resolution,
         snapshot_seq = sequence,
+        allow_write_operations = config.allow_write_operations == true,
+        allowed_operations = allowed_operations,
         last_update = now(),
         probe = probe,
     }
@@ -213,7 +222,7 @@ local function handle(command)
     end
     if command.command == "get_operational_telemetry" then
         local section = command.params.section or "inventory"
-        if section ~= "inventory" and section ~= "signals" and section ~= "vehicles" and section ~= "vehicles_live" and section ~= "stations" then
+        if section ~= "inventory" and section ~= "signals" and section ~= "signal_states" and section ~= "vehicles" and section ~= "vehicles_live" and section ~= "vehicle_positions" and section ~= "train_footprints" and section ~= "stations" then
             return false, nil, { code = "INVALID_REQUEST", message = "unsupported telemetry section: " .. tostring(section) }
         end
         write_json("operational-telemetry-progress.json", { status = "RUNNING", section = section, started_at = now() })
@@ -224,7 +233,7 @@ local function handle(command)
         if not ok then return false, nil, { code = "TELEMETRY_WRITE_FAILED", message = tostring(err) } end
         write_json("operational-telemetry-progress.json", { status = "COMPLETE", section = section, completed_at = now(), counts = telemetry.counts })
         log("INFO", "operational telemetry section completed: " .. section)
-        local successful = telemetry.probe_kind == "UNIFIED_OPERATIONAL_TELEMETRY_DISCOVERY" or telemetry.probe_kind == "OPERATIONAL_VEHICLE_LIVE_FRAME"
+        local successful = telemetry.probe_kind == "UNIFIED_OPERATIONAL_TELEMETRY_DISCOVERY" or telemetry.probe_kind == "OPERATIONAL_VEHICLE_LIVE_FRAME" or telemetry.probe_kind == "OPERATIONAL_VEHICLE_POSITION_FRAME" or telemetry.probe_kind == "OPERATIONAL_TRAIN_FOOTPRINT_FRAME"
         return successful, { section = section, file_name = file_name, source_status = telemetry.source_status, counts = telemetry.counts, duration_ms = telemetry.duration_ms, errors = telemetry.errors }, successful and nil or { code = "TELEMETRY_FAILED", message = tostring(telemetry.error) }
     end
     if command.command == "get_timetable_status" then
@@ -248,6 +257,33 @@ local function handle(command)
         return operations.dispatch(command.params)
     end
     return false, nil, { code = "UNKNOWN_COMMAND", message = tostring(command.command) }
+end
+
+local function report_live_vehicles_if_due()
+    local interval = tonumber(config.vehicle_telemetry_report_interval_seconds) or 0.2
+    if interval <= 0 then return end
+    -- TPF2 advances the verified simulation update counter in 200 ms steps.
+    -- os.clock measures process CPU consumption and produced 0.3-0.45 s wall
+    -- intervals, so the position frame follows each engine update directly.
+    local telemetry = state.operational_telemetry("vehicle_positions")
+    telemetry.report_mode = "PERIODIC"
+    telemetry.report_interval_seconds = interval
+    local ok, err = write_json("operational-telemetry-vehicle_positions.json", telemetry)
+    if not ok then
+        log("WARN", "cannot publish live vehicle telemetry: " .. tostring(err))
+    end
+end
+
+local function report_train_footprints_if_due()
+    -- Engine updates are 200 ms apart in the verified save.  A complete train
+    -- body sample every five updates gives 1 Hz clearance evidence.
+    if update_count - last_footprint_update < 5 then return end
+    last_footprint_update = update_count
+    local telemetry = state.operational_telemetry("train_footprints")
+    telemetry.report_mode = "PERIODIC"
+    telemetry.report_interval_seconds = 1.0
+    local ok, err = write_json("operational-telemetry-train_footprints.json", telemetry)
+    if not ok then log("WARN", "cannot publish train footprints: " .. tostring(err)) end
 end
 
 function M.start()
@@ -279,10 +315,22 @@ function M.load(value) operations.load_state(value) end
 function M.tick()
     update_count = update_count + 1
     operations.tick()
+    if not started then M.start() end
+    report_live_vehicles_if_due()
+    report_train_footprints_if_due()
+    -- Stagger state sampling from full train bodies. Five simulation updates
+    -- is a nominal cadence, not a guaranteed wall-clock sampling rate.
+    if update_count % 5 == 2 then
+        local telemetry = state.operational_telemetry("signal_states")
+        telemetry.report_mode = "PERIODIC"
+        telemetry.report_interval_updates = 5
+        local ok, err = write_json("operational-telemetry-signal_states.json", telemetry)
+        if not ok then log("WARN", "cannot publish signal states: " .. tostring(err)) end
+    end
     local poll_interval = tonumber(config.bridge_poll_interval_updates) or 5
     if poll_interval < 1 then poll_interval = 5 end
     if update_count % poll_interval ~= 0 then return end
-    if not started then M.start() end
+    if type(config.refresh_permissions) == "function" then config.refresh_permissions() end
     local content, read_err = read_file("command.json")
     if content then
         local decoded_ok, command = pcall(json.decode, content)

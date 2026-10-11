@@ -1,0 +1,29 @@
+.app-sidebar {
+    overflow: auto;
+    background: #0c141e;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.app-sidebar-r {
+    border-left: 1px solid #2c4053;
+}
+
+.app-sidebar-l {
+    border-right: 1px solid #2c4053;
+}
+
+.app-sidebar,
+.app-sidebar * {
+    cursor: text;
+}
+
+.app-sidebar button,
+.app-sidebar a,
+.app-sidebar summary {
+    cursor: pointer;
+}
+
+.app-sidebar * {
+    -webkit-user-drag: auto;
+}

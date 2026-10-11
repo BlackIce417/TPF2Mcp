@@ -1,6 +1,7 @@
 param(
     [string]$StagingArea = "",
-    [string]$ModFolderName = "tpf2mcp_1"
+    [string]$ModFolderName = "tpf2mcp_1",
+    [string]$Gcc = ""
 )
 
 $ErrorActionPreference = 'Stop'
@@ -40,6 +41,7 @@ $StagingArea = [System.IO.Path]::GetFullPath($StagingArea)
 $repository = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $modSource = Join-Path $repository 'tpf2_mod'
 $companionSource = Join-Path $repository 'mcp_server'
+$nativeSource = Join-Path $repository 'native\tpf2_control'
 $previewSource = Join-Path $modSource 'workshop_preview.jpg'
 $modBrowserImageSource = Join-Path $modSource 'image_00.tga'
 $destination = [System.IO.Path]::GetFullPath((Join-Path $StagingArea $ModFolderName))
@@ -59,9 +61,24 @@ foreach ($required in @(
     (Join-Path $companionSource 'requirements.txt'),
     (Join-Path $companionSource 'start_server.py'),
     (Join-Path $companionSource 'start_ui.py'),
-    (Join-Path $companionSource 'src')
+    (Join-Path $companionSource 'start_api.py'),
+    (Join-Path $companionSource 'src'),
+    (Join-Path $nativeSource 'build.ps1'),
+    (Join-Path $nativeSource 'inject-verified.ps1')
 )) {
     if (-not (Test-Path -LiteralPath $required)) { throw "Required release input not found: $required" }
+}
+
+$nativeBuildArguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $nativeSource 'build.ps1'))
+if (-not [string]::IsNullOrWhiteSpace($Gcc)) { $nativeBuildArguments += @('-Gcc', $Gcc) }
+& powershell @nativeBuildArguments
+if ($LASTEXITCODE -ne 0) { throw 'Native control build failed.' }
+$nativeDll = Join-Path $nativeSource 'build\tpf2_control.dll'
+$nativeInjector = Join-Path $nativeSource 'build\tpf2_control_injector.exe'
+foreach ($requiredNativeFile in @($nativeDll, $nativeInjector)) {
+    if (-not (Test-Path -LiteralPath $requiredNativeFile -PathType Leaf)) {
+        throw "Required native release input not found: $requiredNativeFile"
+    }
 }
 
 Add-Type -AssemblyName System.Drawing
@@ -93,12 +110,17 @@ Copy-Item -LiteralPath (Join-Path $modSource 'res') -Destination $destination -R
 
 $companionDestination = Join-Path $destination 'mcp_server'
 New-Item -ItemType Directory -Force -Path $companionDestination | Out-Null
-foreach ($fileName in @('pyproject.toml', 'requirements.txt', 'start_server.py', 'start_ui.py')) {
+foreach ($fileName in @('pyproject.toml', 'requirements.txt', 'start_server.py', 'start_ui.py', 'start_api.py')) {
     Copy-Item -LiteralPath (Join-Path $companionSource $fileName) -Destination $companionDestination
 }
 $packageSource = Join-Path $companionSource 'src'
 foreach ($file in Get-ChildItem -LiteralPath $packageSource -Recurse -File -Filter '*.py') {
-    $relativePath = [System.IO.Path]::GetRelativePath($packageSource, $file.FullName)
+    $sourcePrefix = [System.IO.Path]::GetFullPath($packageSource).TrimEnd('\') + '\'
+    $fullSourceFile = [System.IO.Path]::GetFullPath($file.FullName)
+    if (-not $fullSourceFile.StartsWith($sourcePrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Companion source escaped package root: $fullSourceFile"
+    }
+    $relativePath = $fullSourceFile.Substring($sourcePrefix.Length)
     $target = Join-Path (Join-Path $companionDestination 'src') $relativePath
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
     Copy-Item -LiteralPath $file.FullName -Destination $target
@@ -107,17 +129,26 @@ foreach ($file in Get-ChildItem -LiteralPath $packageSource -Recurse -File -Filt
 $uiSource = Join-Path $repository 'ui\rail-map'
 $uiDestination = Join-Path $destination 'ui\rail-map'
 New-Item -ItemType Directory -Force -Path $uiDestination | Out-Null
-foreach ($fileName in @('app.js', 'bridge-crossings.js', 'index.html', 'network-app.js', 'network-page.js', 'network.css', 'README.md', 'template-runtime.js', 'timetable-page.js', 'timetable.css', 'timetable.html', 'timetable.js')) {
+foreach ($fileName in @('README.md', 'package.json', 'package-lock.json', 'vite.config.mjs')) {
     Copy-Item -LiteralPath (Join-Path $uiSource $fileName) -Destination $uiDestination
 }
-foreach ($directoryName in @('templates', 'vendor')) {
+foreach ($directoryName in @('public', 'src')) {
     Copy-Item -LiteralPath (Join-Path $uiSource $directoryName) -Destination $uiDestination -Recurse
 }
 $toolDestination = Join-Path $destination 'tools'
 New-Item -ItemType Directory -Force -Path $toolDestination | Out-Null
-foreach ($fileName in @('serve-rail-map.py', 'export-rail-network-map.py')) {
+foreach ($fileName in @('serve-rail-map.py', 'start-web.ps1', 'export-rail-network-map.py', 'export-dispatch-regions.py', 'run-regional-dispatch.py', 'collect-regional-inputs.py')) {
     Copy-Item -LiteralPath (Join-Path $repository "tools\$fileName") -Destination $toolDestination
 }
+foreach ($fileName in @('control-system.py', 'control-system-acceptance.py', 'configure-capacity-routing.py', 'configure-speed-zone.py', 'configure-station-assignment.py')) {
+    Copy-Item -LiteralPath (Join-Path $repository "tools\$fileName") -Destination $toolDestination
+}
+
+$nativeDestination = Join-Path $destination 'native'
+New-Item -ItemType Directory -Force -Path $nativeDestination | Out-Null
+Copy-Item -LiteralPath $nativeDll -Destination $nativeDestination
+Copy-Item -LiteralPath $nativeInjector -Destination $nativeDestination
+Copy-Item -LiteralPath (Join-Path $nativeSource 'inject-verified.ps1') -Destination $nativeDestination
 
 $forbidden = Get-ChildItem -LiteralPath $destination -Recurse -Force | Where-Object {
     $_.Name -in @('bridge', 'tpf2_mcp_state', 'local_config.lua', '__pycache__') -or

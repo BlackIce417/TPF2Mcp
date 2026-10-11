@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>TPF2 线路运行图</title>
+    <link rel="stylesheet" href="./styles/timetable.css">
+    <link rel="stylesheet" href="./styles/sidebar.css">
+</head>
+
+<body>
+    <header>
+        <div class="brand"><b>TPF2</b> // CTC DISPATCH</div>
+        <div class="title">线路循环运行图</div>
+        <div class="spacer"></div>
+        <button type="button" class="control-state" id="control-system-state" aria-expanded="false">控制：载入中</button>
+        <button type="button" class="control-stop" id="control-system-stop" disabled>停用控制</button>
+        <time id="system-clock" aria-label="系统本地时间"></time>
+        <div class="mode" id="connection-status" role="status">正在连接游戏…</div>
+    </header>
+    <section class="control-popover" id="control-system-popover" hidden></section>
+    <div class="workspace">
+        <nav aria-label="主导航">
+            <button type="button" data-nav="index.html?view=network">站场图</button>
+            <button type="button" data-nav="timetable.html" class="active" aria-current="page">运行图</button>
+            <button type="button" data-nav="regions.html">调度区</button>
+        </nav>
+        <section id="timetable-sidebar-l" class="app-sidebar app-sidebar-l timetable-sidebar list">
+            <div class="panel">
+                <h3>循环计划</h3>
+                <div id="summary">载入中…</div>
+            </div>
+            <div class="panel detail-panel">
+                <h3>当前线路</h3>
+                <div class="info" id="info">请选择线路</div>
+            </div>
+            <div class="line-list" id="lines"></div>
+        </section>
+        <main class="chart">
+            <div class="chart-toolbar">
+                <button id="earlier" type="button" aria-label="查看更早时间">←</button>
+                <button id="follow-time" type="button" aria-pressed="true">跟随系统时间</button>
+                <button id="later" type="button" aria-label="查看更晚时间">→</button>
+                <button id="zoom-in" type="button" aria-label="缩小时间范围">＋</button>
+                <button id="zoom-out" type="button" aria-label="扩大时间范围">−</button>
+                <label>车辆 <select id="vehicle-filter"><option value="">全部车辆</option></select></label>
+            </div>
+            <div class="chart-legend"><span class="legend-plan">虚线：循环计划</span><span class="legend-observed">实线 / 点：站内实测</span><span>纵轴：停站顺序（等距示意）</span></div>
+            <svg id="diagram" viewBox="0 0 1200 720" role="img" aria-label="计划运行图与站内观测对照"></svg>
+            <div id="chart-status" role="status">等待计划与运行数据</div>
+            <section class="planned-stops" aria-label="计划到发时刻">
+                <label>各站计划到发 <select id="trip-filter"></select></label>
+                <p id="calls-status"></p>
+                <table><thead><tr><th scope="col">车站</th><th scope="col">计划到达（系统时间）</th><th scope="col">计划出发（系统时间）</th></tr></thead><tbody id="planned-calls"></tbody></table>
+            </section>
+        </main>
+    </div>
+    <footer id="footer">只读预览 · 实测从打开页面起记录，未知区间留空 · 计划班次尚未绑定具体车辆</footer>
+    <div id="rail-map-templates" data-template-files="templates/timetable.html" hidden aria-hidden="true"></div>
+    <script src="/vendor/jquery-4.0.0.min.js"></script>
+    <script type="module" src="./pages/timetable/entry.js"></script>
+</body>
+
+</html>

@@ -3,9 +3,10 @@ import json
 import tempfile
 import time
 import unittest
-import urllib.request
-from http.server import ThreadingHTTPServer
+from unittest.mock import patch
 from pathlib import Path
+
+from fastapi.testclient import TestClient
 
 
 MODULE_PATH = Path(__file__).parents[1] / "tools" / "serve-rail-map.py"
@@ -13,9 +14,116 @@ SPEC = importlib.util.spec_from_file_location("serve_rail_map", MODULE_PATH)
 MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 SPEC.loader.exec_module(MODULE)
+WEB_STATE = importlib.import_module("tpf2_mcp.web_state")
 
 
 class RailMapServerTests(unittest.TestCase):
+    def test_region_api_serves_persisted_view_and_rejects_cross_save(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "ui"; bridge = Path(directory) / "bridge"
+            root.mkdir(); (bridge / "dispatch").mkdir(parents=True)
+            app = MODULE.RailMapState(root, bridge, Path(directory) / "exporter.py")
+            app.current_save_id = lambda: "current"
+            (root / "rail-network-manifest.json").write_text(json.dumps({"save_id": "current", "generated_at": 10}))
+            view = {"schema_version": 1, "save_id": "current", "topology_generation": 10, "regions": [{"id": "A"}]}
+            view_path = bridge / "dispatch/region-view.json"
+            view_path.write_text(json.dumps(view))
+            with TestClient(MODULE.create_web_app(app)) as client:
+                response = client.get("/api/dispatch-regions")
+                self.assertEqual(200, response.status_code)
+                self.assertEqual(view, response.json())
+                view["save_id"] = "old"
+                view_path.write_text(json.dumps(view))
+                response = client.get("/api/dispatch-regions")
+                self.assertEqual(409, response.status_code)
+                value = response.json()
+                self.assertEqual("REGIONS_SAVE_MISMATCH", value["error"])
+                self.assertNotIn("regions", value)
+
+    def test_live_refresh_defaults_to_two_tenths_of_a_second(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "ui"; bridge = Path(directory) / "bridge"
+            root.mkdir(); bridge.mkdir()
+            app = MODULE.RailMapState(root, bridge, Path(directory) / "exporter.py")
+            self.assertEqual(0.2, app.live_poll_seconds)
+
+    def test_timetable_rejects_old_save_and_builds_current_preview(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "ui" / "rail-map"
+            bridge = Path(directory) / "bridge"
+            root.mkdir(parents=True); bridge.mkdir()
+            snapshot = {"towns": [{"entity_id": 10}], "lines": [], "vehicles": []}
+            (bridge / "state.json").write_text(json.dumps(snapshot), encoding="utf-8")
+            app = MODULE.RailMapState(root, bridge, Path(directory) / "exporter.py")
+            app._plan_path().parent.mkdir(parents=True)
+            app._plan_path().write_text(json.dumps({"schema_version": 3, "save_id": "old-save", "lines": [{"line_id": 999}]}), encoding="utf-8")
+            (root / "rail-network-data.json").write_text(json.dumps({"save_id": "old-save"}), encoding="utf-8")
+            self.assertEqual("NETWORK_SAVE_MISMATCH", app.timetable_plan()["error"])
+            save_id = WEB_STATE.snapshot_save_id(snapshot)
+            (root / "rail-network-data.json").write_text(json.dumps({"save_id": save_id, "lines": [], "stations": []}), encoding="utf-8")
+            plan = app.timetable_plan()
+            self.assertEqual(save_id, plan["save_id"])
+            self.assertEqual(4, plan["schema_version"])
+            self.assertEqual([], plan["lines"])
+            self.assertFalse(plan["automatic_apply"])
+            self.assertEqual("PERSISTED_RUNTIME_PLAN", plan["plan_source"])
+            self.assertTrue(app._runtime_plan_path(save_id).exists())
+            self.assertEqual("old-save", json.loads(app._plan_path().read_text())["save_id"])
+            # A periodic refresh may update timings, but not move the origin.
+            app.timetable_cache = None
+            frame = {"save_id": save_id, "sampled_at": time.time(), "simulation": {"clock": {"game_time": 100000}}}
+            (bridge / "live-rail-state.json").write_text(json.dumps(frame), encoding="utf-8")
+            # The persisted plan is the fixed timetable baseline after restart.
+            initial = app.timetable_plan()
+            self.assertEqual(0, initial["epoch_game_time_ms"])
+            frame["simulation"]["clock"]["game_time"] = 200000
+            (bridge / "live-rail-state.json").write_text(json.dumps(frame), encoding="utf-8")
+            self.assertEqual(0, app.timetable_plan()["epoch_game_time_ms"])
+
+    def test_timetable_live_rejects_stale_and_cross_save_frames(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "ui"; bridge = Path(directory) / "bridge"
+            root.mkdir(); bridge.mkdir()
+            app = MODULE.RailMapState(root, bridge, Path(directory) / "exporter.py")
+            with patch.object(app, "status", return_value={"save_id": "current", "bridge_connected": True}), patch.object(WEB_STATE, "BridgeClient") as client:
+                for frame in ({"save_id": "other", "sampled_at": time.time()}, {"save_id": "current", "sampled_at": time.time() - 30}):
+                    (bridge / "live-rail-state.json").write_text(json.dumps({**frame, "vehicles": [{"entity_id": 1, "line_id": 7}]}), encoding="utf-8")
+                    value = app.timetable_live(7)
+                    self.assertFalse(value["fresh"])
+                    self.assertEqual([], value["vehicles"])
+                    self.assertEqual("UNKNOWN", value["controller"]["state"])
+                client.assert_not_called()
+                (bridge / "live-rail-state.json").write_text(json.dumps({"save_id": "current", "sampled_at": time.time(), "vehicles": [{"entity_id": 1, "line_id": 7}, {"entity_id": 2, "line_id": 8}]}), encoding="utf-8")
+                client.return_value.timetable_status.return_value = {"enabled": False}
+                first = app.timetable_live(7)
+                second = app.timetable_live(7)
+                self.assertTrue(first["fresh"])
+                self.assertEqual([1], [vehicle["entity_id"] for vehicle in first["vehicles"]])
+                self.assertEqual("DISABLED", second["controller"]["state"])
+                client.return_value.timetable_status.assert_called_once_with(7)
+
+    def test_timetable_live_binds_station_vehicle_and_exposes_wall_clock_prediction(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "ui"; bridge = Path(directory) / "bridge"
+            root.mkdir(); bridge.mkdir()
+            now = time.time()
+            frame = {"save_id": "current", "sampled_at": now, "simulation": {"status": "RUNNING", "speed_multiplier": 2,
+                     "clock": {"game_time": 105000}}, "vehicles": [{"entity_id": 1, "line_id": 7, "stop_index": 0,
+                     "raw_state": 2, "position_stale": False}]}
+            (bridge / "live-rail-state.json").write_text(json.dumps(frame), encoding="utf-8")
+            app = MODULE.RailMapState(root, bridge, Path(directory) / "exporter.py")
+            line = {"line_id": 7, "epoch_game_time_ms": 100000, "cycle_seconds": 120, "phase_offsets_seconds": [0],
+                    "stops": [{"station_group_id": 8, "station_name": "甲", "arrival_offset_seconds": 0}]}
+            with patch.object(app, "status", return_value={"save_id": "current", "bridge_connected": True}), \
+                    patch.object(app, "timetable_plan", return_value={"lines": [line]}), \
+                    patch.object(WEB_STATE, "BridgeClient") as client:
+                client.return_value.timetable_status.return_value = {"enabled": False}
+                value = app.timetable_live(7)
+            prediction = value["vehicles"][0]["timetable"]
+            self.assertEqual("INFERRED_FIXED_PERSISTED", prediction["binding_state"])
+            self.assertEqual("ON_TIME", prediction["punctuality"])
+            self.assertAlmostEqual(now, prediction["estimated_arrival_at"], places=2)
+
     def test_status_combines_bridge_and_manifest_without_writing(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "ui"
@@ -38,46 +146,63 @@ class RailMapServerTests(unittest.TestCase):
             root.mkdir(); bridge.mkdir()
             (bridge / "heartbeat.json").write_text(json.dumps({"bridge_ready": True, "last_update": time.time()}), encoding="utf-8")
             app = MODULE.RailMapState(root, bridge, Path(directory) / "exporter.py")
-            server = ThreadingHTTPServer(("127.0.0.1", 0), MODULE.handler_factory(app))
-            import threading
-            worker = threading.Thread(target=server.serve_forever, daemon=True)
-            worker.start()
-            try:
-                with urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/api/status", timeout=2) as response:
-                    payload = json.loads(response.read().decode("utf-8"))
+            with TestClient(MODULE.create_web_app(app)) as client:
+                response = client.get("/api/status")
+                self.assertEqual(200, response.status_code)
+                payload = response.json()
                 self.assertTrue(payload["bridge_connected"])
-            finally:
-                server.shutdown(); server.server_close(); worker.join(timeout=2)
 
-    def test_generated_bootstrap_scripts_are_not_cached(self):
+    def test_control_system_http_configuration_and_emergency_stop(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "ui"; bridge = Path(directory) / "bridge"
             root.mkdir(); bridge.mkdir()
-            (root / "rail-network-manifest.js").write_text("window.RAIL_NETWORK_DATA={};", encoding="utf-8")
-            (root / "templates").mkdir()
-            (root / "templates" / "sidebar.html").write_text("<template></template>", encoding="utf-8")
-            (root / "station-previews").mkdir()
-            (root / "station-previews" / "station-20.json").write_text("{}", encoding="utf-8")
+            state = {"game": {"player_entity": "1"}, "towns": [{"entity_id": 10}]}
+            (bridge / "state.json").write_text(json.dumps(state), encoding="utf-8")
             app = MODULE.RailMapState(root, bridge, Path(directory) / "exporter.py")
-            server = ThreadingHTTPServer(("127.0.0.1", 0), MODULE.handler_factory(app))
-            import threading
-            worker = threading.Thread(target=server.serve_forever, daemon=True); worker.start()
-            try:
-                with urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/rail-network-manifest.js", timeout=2) as response:
+            with TestClient(MODULE.create_web_app(app)) as client:
+                response = client.post("/api/control-system/config", json={
+                    "patch": {"mode": "SHADOW", "features": {"routing": True}},
+                })
+                self.assertEqual(200, response.status_code)
+                configured = response.json()
+                self.assertEqual("SHADOW", configured["config"]["mode"])
+                response = client.post("/api/control-system/stop", json={"reason": "TEST"})
+                self.assertEqual(200, response.status_code)
+                stopped = response.json()
+                self.assertEqual("DISABLED", stopped["config"]["mode"])
+                current = client.get("/api/control-system").json()
+                self.assertEqual("DISABLED", current["state"]["lifecycle"])
+                audit = client.get("/api/web/mutations").json()
+                self.assertEqual(2, audit["count"])
+                self.assertTrue((bridge / "dispatch" / "web.sqlite3").is_file())
+
+    def test_api_only_backend_returns_generated_json_but_not_frontend_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "ui"; bridge = Path(directory) / "bridge"
+            root.mkdir(); bridge.mkdir()
+            (root / "station-previews").mkdir()
+            (root / "station-previews" / "station-20.json").write_text(
+                json.dumps({"station": {"entity_id": 20}}), encoding="utf-8",
+            )
+            (root / "regional-status.json").write_text(json.dumps({"status": "SHADOW"}), encoding="utf-8")
+            (root / "index.html").write_text("<!doctype html><title>frontend</title>", encoding="utf-8")
+            app = MODULE.RailMapState(root, bridge, Path(directory) / "exporter.py")
+            with TestClient(MODULE.create_web_app(app)) as client:
+                for path in ("/api/station-previews/20", "/api/regional-status"):
+                    response = client.get(path)
+                    self.assertEqual(200, response.status_code)
+                    self.assertEqual("application/json", response.headers["content-type"])
                     self.assertIn("no-store", response.headers.get("Cache-Control", ""))
-                with urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/templates/sidebar.html", timeout=2) as response:
-                    self.assertIn("no-store", response.headers.get("Cache-Control", ""))
-                with urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/station-previews/station-20.json", timeout=2) as response:
-                    self.assertIn("no-store", response.headers.get("Cache-Control", ""))
-            finally:
-                server.shutdown(); server.server_close(); worker.join(timeout=2)
+                response = client.get("/index.html")
+                self.assertEqual(404, response.status_code)
+                self.assertEqual("application/json", response.headers["content-type"])
 
     def test_refresh_after_server_restart_reuses_matching_save_manifest(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "ui"; bridge = Path(directory) / "bridge"
             root.mkdir(); bridge.mkdir()
             state = {"game": {"player_entity": "1"}, "towns": [{"entity_id": 10}]}
-            save_id = MODULE.snapshot_save_id(state)
+            save_id = WEB_STATE.snapshot_save_id(state)
             (bridge / "state.json").write_text(json.dumps(state), encoding="utf-8")
             (bridge / "heartbeat.json").write_text(
                 json.dumps({"bridge_ready": True, "last_update": time.time()}), encoding="utf-8",
@@ -99,18 +224,11 @@ class RailMapServerTests(unittest.TestCase):
             (bridge / "live-rail-state.json").write_text(json.dumps({"vehicles": [{"entity_id": 1}], "counts": {"rail_vehicles": 1}}), encoding="utf-8")
             (bridge / "rail-control-state.json").write_text(json.dumps({"signals": [{"entity_id": 2}], "blocks": [{"block_id": "B1"}], "counts": {"signals": 1}}), encoding="utf-8")
             app = MODULE.RailMapState(root, bridge, Path(directory) / "exporter.py")
-            server = ThreadingHTTPServer(("127.0.0.1", 0), MODULE.handler_factory(app))
-            import threading
-            worker = threading.Thread(target=server.serve_forever, daemon=True); worker.start()
-            try:
-                with urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/api/live", timeout=2) as response:
-                    live = json.loads(response.read().decode("utf-8"))
-                with urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/api/control", timeout=2) as response:
-                    control = json.loads(response.read().decode("utf-8"))
+            with TestClient(MODULE.create_web_app(app)) as client:
+                live = client.get("/api/live").json()
+                control = client.get("/api/control").json()
                 self.assertNotIn("signals", live); self.assertNotIn("blocks", live)
                 self.assertEqual(2, control["signals"][0]["entity_id"])
-            finally:
-                server.shutdown(); server.server_close(); worker.join(timeout=2)
 
     def test_operations_context_exposes_compact_station_dwell_data(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -130,7 +248,7 @@ class RailMapServerTests(unittest.TestCase):
                 {"entity_id": 5, "line_id": 91, "raw_state": 1, "supported_cargo_ids": [1], "consist_top_speed_kmh": 300},
             ]}
             (bridge / "state.json").write_text(json.dumps(state), encoding="utf-8")
-            (diagnostics / "line-timetable-plan.json").write_text(json.dumps({"save_id": MODULE.snapshot_save_id(state), "lines": [{
+            (diagnostics / "line-timetable-plan.json").write_text(json.dumps({"save_id": WEB_STATE.snapshot_save_id(state), "lines": [{
                 "line_id": 91, "vehicle_count": 2, "headway_seconds": 329,
                 "stops": [{"stop_index": 2, "scheduled_dwell_seconds": 10,
                            "arrival_offset_seconds": 50, "departure_offset_seconds": 60}],
@@ -156,13 +274,13 @@ class RailMapServerTests(unittest.TestCase):
             root.mkdir(parents=True); bridge.mkdir(); diagnostics.mkdir(parents=True); state_dir.mkdir()
             state = {"game": {"player_entity": "1"}, "towns": [{"entity_id": 10}]}
             (bridge / "state.json").write_text(json.dumps(state), encoding="utf-8")
-            plan = {"save_id": MODULE.snapshot_save_id(state), "counts": {"planned_lines": 1}, "global_conflict_plan": {"conflicts_removed": 2}, "lines": [{
+            plan = {"save_id": WEB_STATE.snapshot_save_id(state), "counts": {"planned_lines": 1}, "global_conflict_plan": {"conflicts_removed": 2}, "lines": [{
                 "line_id": 91, "line_name": "线路 91", "demand": {"waiting": 500, "sample_count": 3},
                 "fleet_policy": {"decision": "ADD_ONE_PROPOSAL", "execution_eligibility": "PROPOSAL_READY"},
                 "platform_feasibility": {"status": "VERIFIED_FIT"},
             }], "parallel_service_diagnostics": []}
             (diagnostics / "line-timetable-plan.json").write_text(json.dumps(plan), encoding="utf-8")
-            completed = {"task_id": "t1", "save_id": MODULE.snapshot_save_id(state), "status": "COMPLETED", "goal": {"target_line_id": 91},
+            completed = {"task_id": "t1", "save_id": WEB_STATE.snapshot_save_id(state), "status": "COMPLETED", "goal": {"target_line_id": 91},
                          "planned_steps": [{"target": {"line_id": 91}}],
                          "steps": [{"step_id": "s1", "sequence": 1, "operation_type": "SET_LINE_STOP_POLICY",
                                     "status": "POSTCONDITION_VERIFIED", "verification": {"status": "POSTCONDITION_VERIFIED"}}]}
@@ -182,7 +300,7 @@ class RailMapServerTests(unittest.TestCase):
             state_dir = Path(directory) / "tpf2_mcp_state"
             root.mkdir(parents=True); bridge.mkdir(); diagnostics.mkdir(parents=True); state_dir.mkdir()
             state = {"game": {"player_entity": "1"}, "towns": [{"entity_id": 10}]}
-            save_id = MODULE.snapshot_save_id(state)
+            save_id = WEB_STATE.snapshot_save_id(state)
             (bridge / "state.json").write_text(json.dumps(state), encoding="utf-8")
             tasks = [
                 {"task_id": "blocked", "save_id": save_id, "status": "READY", "goal": {"vehicle_id": 7},
@@ -212,14 +330,14 @@ class RailMapServerTests(unittest.TestCase):
             self.assertEqual(by_task["cancelled"]["category"], "CANCELLED")
             self.assertEqual(value["status_counts"]["BLOCKED"], 1)
 
-    def test_parallel_flow_advice_is_observation_only(self):
+    def test_parallel_flow_advice_points_to_engineered_control_plane(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "ui" / "rail-map"; bridge = Path(directory) / "bridge"
             diagnostics = Path(directory) / "diagnostics" / "rail-operations"
             root.mkdir(parents=True); bridge.mkdir(); diagnostics.mkdir(parents=True)
             state = {"game": {"player_entity": "1"}, "towns": [{"entity_id": 10}]}
             (bridge / "state.json").write_text(json.dumps(state), encoding="utf-8")
-            plan = {"save_id": MODULE.snapshot_save_id(state), "lines": [], "parallel_service_diagnostics": [{
+            plan = {"save_id": WEB_STATE.snapshot_save_id(state), "lines": [], "parallel_service_diagnostics": [{
                 "status": "OBSERVED_PARALLEL_OD_IMBALANCE", "shared_station_pair": [10, 11], "cargo_id": 0,
                 "lines": [{"line_id": 1, "demand_share": .9}, {"line_id": 2, "demand_share": .1}],
                 "observation_only": True,
@@ -230,9 +348,9 @@ class RailMapServerTests(unittest.TestCase):
             item = app.ai_suggestions()["suggestions"][0]
 
             self.assertEqual("PARALLEL_LINE_IMBALANCE", item["template"])
-            self.assertEqual("OBSERVATION_ONLY", item["automation_status"])
-            self.assertTrue(item["observation_only"])
-            self.assertIn("当前不生成或执行", item["required_action"])
+            self.assertEqual("CONTROL_DISABLED", item["automation_status"])
+            self.assertFalse(item["observation_only"])
+            self.assertIn("启用运力分流", item["required_action"])
 
     def test_recent_verified_fleet_change_suppresses_repeated_add_advice(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -240,7 +358,7 @@ class RailMapServerTests(unittest.TestCase):
             diagnostics = Path(directory) / "diagnostics" / "rail-operations"
             root.mkdir(parents=True); bridge.mkdir(); diagnostics.mkdir(parents=True)
             state = {"game": {"player_entity": "1"}, "towns": [{"entity_id": 10}]}
-            save_id = MODULE.snapshot_save_id(state)
+            save_id = WEB_STATE.snapshot_save_id(state)
             (bridge / "state.json").write_text(json.dumps(state), encoding="utf-8")
             (diagnostics / "line-timetable-plan.json").write_text(json.dumps({
                 "save_id": save_id,

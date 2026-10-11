@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>TPF2 调度区</title>
+    <link rel="stylesheet" href="./styles/network.css">
+    <link rel="stylesheet" href="./styles/sidebar.css">
+    <link rel="stylesheet" href="./styles/regions.css">
+</head>
+<body>
+    <header>
+        <div class="brand"><b>TPF2</b> // CTC DISPATCH</div>
+        <div class="sep"></div>
+        <div class="station" id="region-title">调度区总览</div>
+        <div class="meta" id="region-summary">正在读取划区数据…</div>
+        <div class="spacer"></div>
+        <button type="button" class="control-state" id="control-system-state" aria-expanded="false">控制：载入中</button>
+        <button type="button" class="control-stop" id="control-system-stop" disabled>停用控制</button>
+        <div class="mode">划区草案 · 边界待校准</div>
+    </header>
+    <section class="control-popover" id="control-system-popover" hidden></section>
+    <div class="workspace">
+        <nav aria-label="主导航">
+            <button type="button" data-nav="index.html?view=network">站场图</button>
+            <button type="button" data-nav="timetable.html">运行图</button>
+            <button type="button" data-nav="regions.html" class="active" aria-current="page">调度区</button>
+        </nav>
+        <section id="board-wrap">
+            <svg id="board" viewBox="0 0 1200 720" preserveAspectRatio="xMidYMid meet" role="img" aria-label="调度区轨道、辖站与边界"></svg>
+            <div class="map-controls">
+                <button type="button" id="all-regions">全部区域</button>
+                <button type="button" id="fit-region">适配范围</button>
+                <button type="button" id="zoom-out" aria-label="缩小">−</button>
+                <span class="zoom-value" id="zoom-value">100%</span>
+                <button type="button" id="zoom-in" aria-label="放大">＋</button>
+                <button type="button" id="zoom-reset">复位</button>
+                <label><input type="checkbox" id="show-boundaries" checked>边界</label>
+            </div>
+            <div id="region-message" role="status" aria-live="polite">正在读取调度区…</div>
+            <div id="region-legend" aria-label="调度区图例"></div>
+            <div class="watermark">坐标锚点 · 信号待校准</div>
+        </section>
+        <aside id="dispatch-sidebar-r" class="app-sidebar app-sidebar-r dispatch-sidebar">
+            <div class="sidebar-header"><div class="panel-title" id="dispatch-sidebar-title">调度区管辖范围</div></div>
+            <div id="dispatch-region-list" class="dispatch-region-list"></div>
+            <section id="regional-runtime" class="dispatch-runtime" aria-live="polite">
+                <h3 id="dispatch-runtime-title">区域调度后台</h3>
+                <p id="dispatch-runtime-mode"></p>
+                <p id="dispatch-runtime-train-count"></p>
+                <p id="dispatch-runtime-quality" class="regional-warning" hidden></p>
+                <p id="dispatch-runtime-coverage"></p>
+                <p id="dispatch-runtime-control"></p>
+                <details id="dispatch-runtime-calibration">
+                    <summary>边界校准状态</summary>
+                    <div id="dispatch-runtime-calibration-list"></div>
+                </details>
+            </section>
+            <section id="region-details" class="dispatch-region-details" aria-live="polite">
+                <div id="dispatch-overview-details">
+                    <h3>总览</h3>
+                    <p>选择上方调度区，高亮辖内轨道和车站。可缩放、拖动地图，或点击站点定位。</p>
+                    <p>已记录 <span id="dispatch-overview-station-count">0</span> 个车站，<span id="dispatch-overview-depot-count">0</span> 个机务设施。</p>
+                </div>
+                <div id="dispatch-selected-region" hidden>
+                    <h3 id="dispatch-region-name"></h3>
+                    <p id="dispatch-region-summary"></p>
+                    <section id="dispatch-focused-station" hidden>
+                        <h4 id="dispatch-focused-station-name"></h4>
+                        <a id="dispatch-focused-station-link">查看该站局部站场图 →</a>
+                    </section>
+                    <h4>机务段 / 动车所</h4>
+                    <p id="dispatch-region-depots"></p>
+                    <p id="dispatch-region-isolated-tracks" hidden></p>
+                    <details id="dispatch-region-boundaries">
+                        <summary>坐标边界 <span id="dispatch-boundary-count">0</span> 处 · 信号待校准</summary>
+                        <div id="dispatch-boundary-list" class="region-boundaries"></div>
+                    </details>
+                    <h4>辖站（点击定位）</h4>
+                    <div id="dispatch-station-list" class="region-stations"></div>
+                </div>
+            </section>
+        </aside>
+    </div>
+    <footer><span id="region-footer">只读划区视图</span><button type="button" id="reload-regions">重新读取</button></footer>
+    <template id="region-card-template">
+        <button type="button" class="region-card" aria-pressed="false"><span class="region-swatch"></span><strong></strong><small></small></button>
+    </template>
+    <script src="/vendor/jquery-4.0.0.min.js"></script>
+    <script src="/vendor/pixi-7.4.3.min.js"></script>
+    <script type="module" src="./pages/regions/entry.js"></script>
+</body>
+</html>

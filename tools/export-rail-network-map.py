@@ -1078,10 +1078,10 @@ def main() -> None:
     default_input = bridge_dir() / "rail-network.json"
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", type=Path, default=default_input)
-    parser.add_argument("--output-directory", type=Path, default=Path("ui/rail-map"))
+    parser.add_argument("--output-directory", type=Path, default=Path("var/rail-map"))
     parser.add_argument("--tile-size", type=float, default=2000.0)
     parser.add_argument("--save-id")
-    parser.add_argument("--station-model-ground-truth", type=Path, default=Path("ui/rail-map/station-model-ground-truth.json"))
+    parser.add_argument("--station-model-ground-truth", type=Path, default=Path("var/rail-map/station-model-ground-truth.json"))
     args = parser.parse_args()
     result = prepare(json.loads(args.input.read_text(encoding="utf-8")))
     if args.save_id:
@@ -1093,7 +1093,6 @@ def main() -> None:
     args.output_directory.mkdir(parents=True, exist_ok=True)
     encoded = json.dumps(result, ensure_ascii=False, separators=(",", ":"))
     (args.output_directory / "rail-network-data.json").write_text(encoded + "\n", encoding="utf-8")
-    (args.output_directory / "rail-network-data.js").write_text("window.RAIL_NETWORK_DATA=" + encoded + ";\n", encoding="utf-8")
     manifest, tiles = build_manifest_and_tiles(result, args.tile_size)
     preview_manifest = write_station_previews(
         result,
@@ -1108,14 +1107,11 @@ def main() -> None:
     }
     manifest_encoded = json.dumps(manifest, ensure_ascii=False, separators=(",", ":"))
     (args.output_directory / "rail-network-manifest.json").write_text(manifest_encoded + "\n", encoding="utf-8")
-    (args.output_directory / "rail-network-manifest.js").write_text("window.RAIL_NETWORK_DATA=" + manifest_encoded + ";\n", encoding="utf-8")
     tile_directory = args.output_directory / "rail-network-tiles"
     tile_directory.mkdir(parents=True, exist_ok=True)
     for key, tile in tiles.items():
         tile_encoded = json.dumps(tile, ensure_ascii=False, separators=(",", ":"))
         (tile_directory / f"tile-{key}.json").write_text(tile_encoded + "\n", encoding="utf-8")
-        script = f"window.RAIL_NETWORK_TILES=window.RAIL_NETWORK_TILES||{{}};window.RAIL_NETWORK_TILES[{json.dumps(key)}]={tile_encoded};window.dispatchEvent(new CustomEvent('rail-network-tile',{{detail:{json.dumps(key)}}}));\n"
-        (tile_directory / f"tile-{key}.js").write_text(script, encoding="utf-8")
     print(json.dumps({**result["counts"], "tiles": len(tiles)}, ensure_ascii=False))
 
 

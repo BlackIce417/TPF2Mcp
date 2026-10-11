@@ -45,6 +45,7 @@ class ConfigTests(unittest.TestCase):
         installer = (ROOT / "tools/install-mod.ps1").read_text(encoding="utf-8")
         launcher = (ROOT / "mcp_server/start_server.py").read_text(encoding="utf-8")
         ui_launcher = (ROOT / "mcp_server/start_ui.py").read_text(encoding="utf-8")
+        api_launcher = (ROOT / "mcp_server/start_api.py").read_text(encoding="utf-8")
         requirements = ROOT / "mcp_server/requirements.txt"
 
         self.assertIn("mcp_server", strings)
@@ -56,9 +57,11 @@ class ConfigTests(unittest.TestCase):
         self.assertIn("TPF2_MCP_MOD_DIR", launcher)
         self.assertIn('SERVER_DIRECTORY / "src"', launcher)
         self.assertIn("sys.dont_write_bytecode = True", launcher)
-        self.assertIn("python start_ui.py", strings)
-        self.assertIn("http://127.0.0.1:8765/?view=network", strings)
-        self.assertIn('MOD_DIRECTORY / "tools" / "serve-rail-map.py"', ui_launcher)
+        self.assertIn("python start_api.py", strings)
+        self.assertIn("npm run dev", strings)
+        self.assertIn("http://127.0.0.1:5173/?view=network", strings)
+        self.assertIn('SERVER_DIRECTORY / "start_api.py"', ui_launcher)
+        self.assertIn('MOD_DIRECTORY / "tools" / "serve-rail-map.py"', api_launcher)
         self.assertIn("TPF2_MCP_MOD_DIR", ui_launcher)
 
     def test_workshop_metadata_and_clean_package_contract(self):
@@ -76,8 +79,16 @@ class ConfigTests(unittest.TestCase):
         self.assertIn("local_config.lua", builder)
         self.assertIn("M\\.allow_write_operations", builder)
         self.assertIn("serve-rail-map.py", builder)
+        self.assertIn("start-web.ps1", builder)
         self.assertIn("export-rail-network-map.py", builder)
-        self.assertIn("network-app.js", builder)
+        self.assertIn("@('public', 'src')", builder)
+        self.assertIn("tpf2_control.dll", builder)
+        self.assertIn("tpf2_control_injector.exe", builder)
+        self.assertIn("configure-speed-zone.py", builder)
+        self.assertIn("configure-capacity-routing.py", builder)
+        self.assertIn("configure-station-assignment.py", builder)
+        self.assertIn("control-system.py", builder)
+        self.assertIn("control-system-acceptance.py", builder)
 
 
 if __name__ == "__main__":

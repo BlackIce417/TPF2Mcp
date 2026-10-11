@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tpf2-mcp.local/schemas/dispatch/control-result.schema.json",
+  "title": "TPF2 Dispatch Control Result",
+  "type": "object",
+  "required": ["schema_version", "command_id", "status"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "command_id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["ACCEPTED", "DUPLICATE", "PLANNED_SHADOW", "EXECUTED", "VERIFIED",
+                              "REJECTED", "EXPIRED", "CANCELLED", "NOT_FOUND", "FAILED", "UNKNOWN"]},
+    "backend": {"type": "string"},
+    "execution": {"type": "string"},
+    "reason": {"type": ["string", "object"]},
+    "observed": {"type": "object"}
+  },
+  "additionalProperties": true
+}

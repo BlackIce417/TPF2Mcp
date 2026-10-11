@@ -57,7 +57,7 @@
 
 - `tpf2_mod/`：Transport Fever 2 Lua Mod 源码。
 - `mcp_server/`：Python stdio MCP Server 与 Bridge 客户端。
-- `ui/rail-map/`：本地铁路调度图前端。
+- `ui/rail-map/`：独立 Vite 铁路调度图前端。
 - `tools/`：安装、测试、导出、打包和验收工具。
 
 ## 快速体验
@@ -66,24 +66,39 @@
 2. 从 Mod 根目录的 `mcp_server/` 启动 MCP Server：
 
    ```powershell
+   python -m pip install -r requirements.txt
    python start_server.py
    ```
 
-3. 需要查看铁路图时，在同一目录启动 UI：
+3. 需要查看铁路图时启动 FastAPI JSON API：
 
    ```powershell
-   python start_ui.py
+   python start_api.py
    ```
 
-4. 浏览器打开 `http://127.0.0.1:8765/?view=network`。
+4. 另开终端启动前端：
 
-Mod 不会自动启动外部 Python 进程；MCP Server 和 UI 需要单独启动。默认发布包
+   ```powershell
+   cd ..\ui\rail-map
+   npm install
+   npm run dev
+   ```
+
+5. 浏览器打开 `http://127.0.0.1:5173/?view=network`。
+
+Mod 不会自动启动外部进程；MCP Server、FastAPI API 和前端需要单独启动。默认发布包
 是只读的。受控写入属于实验性能力，必须显式启用并通过 Task 审批流程执行。
 
 ## 文档
 
+- [阶段成果与后续任务](docs/PROJECT_PROGRESS.md)：当前模块入口、三项目标进度及本次验证结果。
+
+- [当前数据与调度能力（2026-09-25 代码复核）](docs/CURRENT_CAPABILITIES.md)：区分历史实测、当前接口、已知缺口和架构目标。
+- [本地智能调度算法理论方案](docs/DISPATCH_ALGORITHM_THEORY.md)：区间动态限速、容量约束客货分配、站台—进路联合调度及统一滚动时域架构。
+
 - [功能与受控操作入口](docs/agent-mcp-tools.md)
 - [技术参考：架构、开发、安装与发布](docs/technical-reference.md)
+- [前端架构与编码规范](docs/frontend-architecture.md)
 - [架构说明](docs/architecture.md)
 - [最终目标与验收边界](docs/FINAL_GOAL_ACCEPTANCE.md)
 - [各阶段开发文档](docs/)

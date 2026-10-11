@@ -1,5 +1,7 @@
 # Phase 7 acceptance — dynamic transport state and explainable diagnosis
 
+> 2026-09-25 状态校订：本文为阶段记录或特定数据源/Schema 的历史说明，保留原结论以供追溯。载荷/候车量不可用不能推广为后续所有接口不可用；独立 line_demand 已提供客货计数和线路停站 OD，旧快照字段未必更新。当前入口与限制见 [CURRENT_CAPABILITIES.md](CURRENT_CAPABILITIES.md)。
+
 ## Implemented interface behavior
 
 - `get_game_state` and `get_world_snapshot` accept optional `force_refresh: true`. It bypasses the Python interaction cache and the Lua two-second snapshot cache. Phase 8 renames the former ambiguous `snapshot_age_ms` to `index_age_ms` and adds source-derived `source_snapshot_age_ms`.

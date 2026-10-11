@@ -3,8 +3,14 @@
 -- but each section is collected and serialized in a separate game update.  A
 -- previous all-in-one callback caused a native TPF2 crash on a large save.
 local common = require "tpf2_mcp/collectors/common"
+local signal_direction = require "tpf2_mcp/collectors/signal_direction"
+local signal_state = require "tpf2_mcp/collectors/signal_state"
+local known_signal_ids, signal_inventory_at = {}, nil
+local dispatcher = require "tpf2_mcp/operations/dispatcher"
+local collection_session_id = tostring(os.time()) .. "-" .. tostring({}):gsub("[^%w]", "")
 
 local M = {}
+function M.session_id() return collection_session_id end
 
 local COMPONENTS = {
     "SIGNAL", "SIGNAL_LIST", "BASE_EDGE", "BASE_EDGE_TRACK", "BASE_NODE", "TRANSPORT_VEHICLE",
@@ -15,7 +21,7 @@ local COMPONENTS = {
 
 local SIGNAL_FIELDS = { "edge", "edgeId", "edgePos", "position", "pathPos", "dir", "direction", "type", "signalType", "state", "oneWay", "modelId" }
 local EDGE_OBJECT_FIELDS = { "entity", "id", "model", "modelId", "edge", "edgeId", "edgePos", "position", "param", "left", "oneWay", "signal" }
-local VEHICLE_FIELDS = { "line", "state", "depot", "transportMode", "mode", "vehicleType", "speed", "velocity", "position", "path", "movePath", "edge", "edgeId", "edgePos", "pathPos", "stopIndex", "currentStop", "nextStop", "targetStation", "waitingTime", "arrivalTime", "departureTime" }
+local VEHICLE_FIELDS = { "line", "state", "depot", "transportMode", "mode", "vehicleType", "speed", "velocity", "position", "path", "movePath", "edge", "edgeId", "edgePos", "pathPos", "stopIndex", "currentStop", "nextStop", "targetStation", "arrivalStationTerminal", "arrivalStationTerminalLocked", "waitingTime", "arrivalTime", "departureTime" }
 local INFO_FIELDS = { "state", "speed", "velocity", "position", "path", "movePath", "edge", "edgeId", "edgePos", "pathPos", "section", "distance", "stopIndex", "currentStop", "nextStop", "targetStation", "waitingTime", "arrivalTime", "departureTime", "cargoInfos" }
 local MOVE_FIELDS = { "path", "pathPos", "edge", "edgeId", "edgePos", "position", "dir", "direction", "speed", "velocity", "distance", "segment", "section", "state" }
 local PATH_EDGE_FIELDS = { "entity", "edge", "edgeId", "id", "dir", "direction", "length", "offset", "param", "position" }
@@ -153,12 +159,15 @@ local function collect_track_edge_objects(signal_by_id, errors)
             -- presented as operational signals (0/1).
             local signal_list = object_id ~= nil and common.safe_get_component(raw_entity, "SIGNAL_LIST", errors) or nil
             local entries = common.field(signal_list, "signals") or common.field(signal_list, "items") or signal_list
-            local signal_types, operational_signal = {}, false
-            for _, entry in ipairs(common.sequence_values(entries)) do
+            local signal_types, operational_signal, directions = {}, false, {}
+            for signal_index, entry in ipairs(common.sequence_values(entries)) do
                 local signal_type = common.field(entry, "type") or common.field(entry, "signalType")
                 if type(signal_type) == "number" then
                     signal_types[#signal_types + 1] = signal_type
-                    if signal_type == 0 or signal_type == 1 then operational_signal = true end
+                    if signal_type == 0 or signal_type == 1 then
+                        operational_signal = true
+                        directions[#directions + 1] = signal_direction.collect(entry, object_id, signal_index - 1, errors, edge_entity)
+                    end
                 end
             end
             local raw_param = common.field(object, "param") or common.field(object, "edgePos") or common.field(object, "position")
@@ -170,6 +179,7 @@ local function collect_track_edge_objects(signal_by_id, errors)
                 signal_component_observed = object_id ~= nil and signal_by_id[object_id] ~= nil,
                 signal_list_observed = signal_list ~= nil,
                 signal_types = signal_types,
+                direction_evidence = directions,
                 operational_signal_observed = operational_signal,
                 signal_model_observed = looks_like_signal(models),
             }
@@ -242,6 +252,24 @@ end
 -- dyn.pathPos selects the current edge in path.edges and dyn.speed is the
 -- instantaneous simulation speed.  Keep the discovery-heavy `vehicles`
 -- section separate so it is never serialized on every map refresh.
+local function train_envelope_for(entity, vehicle, errors)
+    if common.field(vehicle, "carrier") ~= 1 then return nil end
+    local train = common.safe_get_component(entity, "TRAIN", errors)
+    if train == nil then return { source_status = "TRAIN_COMPONENT_UNAVAILABLE", complete = false } end
+    local vehicles = common.sequence_values(common.field(train, "vehicles"))
+    local result = { source_status = "ENGINE_TRAIN_COMPONENT", expected_parts = #vehicles, parts = {}, complete = #vehicles > 0 and #vehicles <= 256 }
+    -- Retain documented reservation fields as evidence, without assigning a
+    -- meaning to their indices until they have been checked in the live game.
+    result.reservation_fields = common.probe_fields(train, { "reservedFrom", "reservedTo" })
+    for i, part_entity in ipairs(vehicles) do
+        if i > 256 then break end
+        local center, bounds = bounds_for(part_entity, errors)
+        result.parts[#result.parts + 1] = { entity_id = entity_id(part_entity), position = center, bounds = bounds }
+        if bounds == nil then result.complete = false end
+    end
+    return result
+end
+
 local function collect_live_vehicles(errors)
     local result = {}
     local ok, reason = common.safe_for_each_entity("TRANSPORT_VEHICLE", function(entity)
@@ -253,6 +281,20 @@ local function collect_live_vehicles(errors)
         local path_pos = common.field(dyn, "pathPos")
         local edge_index = common.field(path_pos, "edgeIndex")
         local edges = common.field(path, "edges")
+        local path_edge_ids = {}
+        local path_edge_directions = {}
+        local path_transport_indices = {}
+        for _, path_edge in ipairs(common.sequence_values(edges)) do
+            -- Export the complete current MOVE_PATH edge order.  This is the
+            -- engine's actual per-vehicle route and lets the controller arm a
+            -- speed zone ahead of a moving train without guessing from map
+            -- geometry or waiting for a full circuit.
+            local path_edge_id_value = common.field(path_edge, "edgeId")
+            local path_raw_edge_id = common.field(path_edge_id_value, "entity") or common.field(path_edge_id_value, "edge") or common.field(path_edge_id_value, "id") or path_edge_id_value
+            path_edge_ids[#path_edge_ids + 1] = entity_id(path_raw_edge_id)
+            path_edge_directions[#path_edge_directions + 1] = common.field(path_edge, "dir")
+            path_transport_indices[#path_transport_indices + 1] = common.field(path_edge_id_value, "index") or -1
+        end
         local current = type(edge_index) == "number" and common.field(edges, edge_index) or nil
         -- Some ordinary Lua fixtures use one-based arrays; engine path vectors
         -- are zero based.  This fallback keeps both representations testable.
@@ -263,6 +305,7 @@ local function collect_live_vehicles(errors)
         local direction = common.field(current, "dir")
         local edge_param = pos01
         if type(pos01) == "number" and direction == false then edge_param = 1 - pos01 end
+        local arrival_terminal = common.field(vehicle, "arrivalStationTerminal")
         local center = bounds_for(entity, errors)
         result[#result + 1] = {
             entity_id = id,
@@ -270,16 +313,27 @@ local function collect_live_vehicles(errors)
             line_id = entity_id(common.field(vehicle, "line")),
             raw_state = common.field(vehicle, "state"),
             stop_index = common.field(vehicle, "stopIndex"),
+            arrival_station_index = common.field(arrival_terminal, "station"),
+            arrival_terminal_index = common.field(arrival_terminal, "terminal"),
+            arrival_station_terminal_locked = type(common.field(vehicle, "arrivalStationTerminalLocked")) == "boolean" and common.field(vehicle, "arrivalStationTerminalLocked") or nil,
             position = center,
             current_edge_id = entity_id(raw_edge_id),
             current_edge_index = type(edge_index) == "number" and edge_index or nil,
             current_edge_direction = direction,
             current_edge_param = type(edge_param) == "number" and edge_param or nil,
+            path_edge_ids = path_edge_ids,
+            path_edge_directions = path_edge_directions,
+            path_transport_indices = path_transport_indices,
+            train_envelope = train_envelope_for(entity, vehicle, errors),
+            path_edge_count = #path_edge_ids,
             path_pos = type(common.field(path_pos, "pos")) == "number" and common.field(path_pos, "pos") or nil,
             speed_mps = type(common.field(dyn, "speed")) == "number" and common.field(dyn, "speed") or nil,
             acceleration_mps2 = type(common.field(dyn, "accel")) == "number" and common.field(dyn, "accel") or nil,
+            brake_decel_mps2 = type(common.field(dyn, "brakeDecel")) == "number" and common.field(dyn, "brakeDecel") or nil,
             approaching_station = type(common.field(dyn, "approachingStation")) == "boolean" and common.field(dyn, "approachingStation") or nil,
             auto_departure = type(common.field(vehicle, "autoDeparture")) == "boolean" and common.field(vehicle, "autoDeparture") or nil,
+            user_stopped = type(common.field(vehicle, "userStopped")) == "boolean" and common.field(vehicle, "userStopped") or nil,
+            movement_control = dispatcher.movement_control(id),
             doors_open = type(common.field(vehicle, "doorsOpen")) == "boolean" and common.field(vehicle, "doorsOpen") or nil,
             time_until_load = type(common.field(vehicle, "timeUntilLoad")) == "number" and common.field(vehicle, "timeUntilLoad") or nil,
             time_until_close_doors = type(common.field(vehicle, "timeUntilCloseDoors")) == "number" and common.field(vehicle, "timeUntilCloseDoors") or nil,
@@ -287,6 +341,91 @@ local function collect_live_vehicles(errors)
         }
     end, errors)
     if not ok then errors[#errors + 1] = { component = "TRANSPORT_VEHICLE.live", error = tostring(reason) } end
+    table.sort(result, function(a, b) return a.entity_id < b.entity_id end)
+    return result
+end
+
+-- Small position-only frame intended for the 5 Hz browser map feed. Complete
+-- MOVE_PATH arrays stay in vehicles_live because serializing them takes longer
+-- than the requested reporting interval on a large save.
+local function collect_vehicle_positions(errors)
+    local result = {}
+    local ok, reason = common.safe_for_each_entity("TRANSPORT_VEHICLE", function(entity)
+        local vehicle = common.safe_get_component(entity, "TRANSPORT_VEHICLE", errors)
+        local move_path = common.safe_get_component(entity, "MOVE_PATH", errors)
+        local path = common.field(move_path, "path")
+        local dyn = common.field(move_path, "dyn") or common.field(move_path, "dyn0")
+        local path_pos = common.field(dyn, "pathPos")
+        local edge_index = common.field(path_pos, "edgeIndex")
+        local edges = common.field(path, "edges")
+        local current = type(edge_index) == "number" and common.field(edges, edge_index) or nil
+        if current == nil and type(edge_index) == "number" then current = common.field(edges, edge_index + 1) end
+        local edge_id_value = common.field(current, "edgeId")
+        local raw_edge_id = common.field(edge_id_value, "entity") or common.field(edge_id_value, "edge") or common.field(edge_id_value, "id") or edge_id_value
+        local pos01 = common.field(path_pos, "pos01")
+        local direction = common.field(current, "dir")
+        local edge_param = pos01
+        if type(pos01) == "number" and direction == false then edge_param = 1 - pos01 end
+        local arrival_terminal = common.field(vehicle, "arrivalStationTerminal")
+        result[#result + 1] = {
+            entity_id = entity_id(entity),
+            line_id = entity_id(common.field(vehicle, "line")),
+            raw_state = common.field(vehicle, "state"),
+            stop_index = common.field(vehicle, "stopIndex"),
+            arrival_station_index = common.field(arrival_terminal, "station"),
+            arrival_terminal_index = common.field(arrival_terminal, "terminal"),
+            position = bounds_for(entity, errors),
+            current_edge_id = entity_id(raw_edge_id),
+            current_edge_index = type(edge_index) == "number" and edge_index or nil,
+            current_edge_direction = direction,
+            current_edge_param = type(edge_param) == "number" and edge_param or nil,
+            speed_mps = type(common.field(dyn, "speed")) == "number" and common.field(dyn, "speed") or nil,
+            acceleration_mps2 = type(common.field(dyn, "accel")) == "number" and common.field(dyn, "accel") or nil,
+            approaching_station = type(common.field(dyn, "approachingStation")) == "boolean" and common.field(dyn, "approachingStation") or nil,
+        }
+    end, errors)
+    if not ok then errors[#errors + 1] = { component = "TRANSPORT_VEHICLE.position", error = tostring(reason) } end
+    table.sort(result, function(a, b) return a.entity_id < b.entity_id end)
+    return result
+end
+
+-- A 1 Hz frame containing only physical train bodies.  This is deliberately
+-- separate from the 5 Hz head positions and the large route/detail frame.
+-- It is fresh enough for two-sample tail-clear proof without serializing every
+-- train's complete MOVE_PATH once per game update.
+local function collect_train_footprints(errors)
+    local result = {}
+    local ok, reason = common.safe_for_each_entity("TRANSPORT_VEHICLE", function(entity)
+        local vehicle = common.safe_get_component(entity, "TRANSPORT_VEHICLE", errors)
+        if common.field(vehicle, "carrier") ~= 1 then return end
+        local move_path = common.safe_get_component(entity, "MOVE_PATH", errors)
+        local path = common.field(move_path, "path")
+        local dyn = common.field(move_path, "dyn") or common.field(move_path, "dyn0")
+        local path_pos = common.field(dyn, "pathPos")
+        local edge_index = common.field(path_pos, "edgeIndex")
+        local edges = common.sequence_values(common.field(path, "edges"))
+        local route = { start_index = nil, current_index = edge_index, edge_ids = {}, directions = {}, transport_indices = {} }
+        if type(edge_index) == "number" then
+            local first = math.max(1, edge_index + 1 - 96)
+            local last = math.min(#edges, edge_index + 1 + 96)
+            route.start_index = first - 1
+            for i = first, last do
+                local path_edge = edges[i]
+                local edge_id_value = common.field(path_edge, "edgeId")
+                local raw_id = common.field(edge_id_value, "entity") or common.field(edge_id_value, "edge") or common.field(edge_id_value, "id") or edge_id_value
+                route.edge_ids[#route.edge_ids + 1] = entity_id(raw_id)
+                route.directions[#route.directions + 1] = common.field(path_edge, "dir")
+                route.transport_indices[#route.transport_indices + 1] = common.field(edge_id_value, "index") or -1
+            end
+        end
+        result[#result + 1] = {
+            entity_id = entity_id(entity),
+            train_envelope = train_envelope_for(entity, vehicle, errors),
+            route_window = route,
+            brake_decel_mps2 = type(common.field(dyn, "brakeDecel")) == "number" and common.field(dyn, "brakeDecel") or nil,
+        }
+    end, errors)
+    if not ok then errors[#errors + 1] = { component = "TRAIN.footprint", error = tostring(reason) } end
     table.sort(result, function(a, b) return a.entity_id < b.entity_id end)
     return result
 end
@@ -343,7 +482,7 @@ local function collect_clock_inventory()
     return result
 end
 
-local VALID_SECTIONS = { inventory = true, signals = true, vehicles = true, vehicles_live = true, stations = true }
+local VALID_SECTIONS = { inventory = true, signals = true, signal_states = true, vehicles = true, vehicles_live = true, vehicle_positions = true, train_footprints = true, stations = true }
 
 function M.collect(section)
     section = section or "inventory"
@@ -353,6 +492,8 @@ function M.collect(section)
     local result = {
         schema_version = 1, probe_kind = "UNIFIED_OPERATIONAL_TELEMETRY_DISCOVERY",
         section = section,
+        session_id = collection_session_id,
+        collector_revision = "regional-20260919-v3",
         source_status = "ENGINE_OBSERVED_DIAGNOSTIC", generated_at = os and os.time and os.time() or 0,
         errors = errors, write_command_sent = false,
     }
@@ -365,7 +506,23 @@ function M.collect(section)
         local signals, signal_by_id = collect_signals(errors)
         local objects, linked, inspected = collect_track_edge_objects(signal_by_id, errors)
         result.signals, result.track_edge_objects, result.signal_edge_objects = signals, objects, linked
+        known_signal_ids = {}
+        local seen = {}
+        for _, item in ipairs(linked) do
+            if item.operational_signal_observed and not seen[item.object_entity_id] then
+                known_signal_ids[#known_signal_ids + 1] = item.object_entity_id
+                seen[item.object_entity_id] = true
+            end
+        end
+        signal_inventory_at = result.generated_at
         result.counts = { signals = #linked, signal_edge_objects = #linked, track_edge_objects = #objects, track_edge_objects_inspected = inspected }
+    elseif section == "signal_states" then
+        result.probe_kind = "OPERATIONAL_SIGNAL_STATE_FRAME"
+        result.source_status = signal_inventory_at and "API_STATE_PROBE" or "SIGNAL_INVENTORY_REQUIRED"
+        result.inventory_generated_at = signal_inventory_at
+        result.signal_states = signal_state.collect(known_signal_ids, errors)
+        result.simulation_clock = collect_simulation_clock(errors)
+        result.counts = { signals = #result.signal_states }
     elseif section == "vehicles" then
         local inventory = component_inventory()
         result.vehicles = collect_vehicles(inventory, errors)
@@ -376,6 +533,18 @@ function M.collect(section)
         result.vehicles = collect_live_vehicles(errors)
         result.simulation_clock = collect_simulation_clock(errors)
         result.counts = { vehicles = #result.vehicles }
+    elseif section == "vehicle_positions" then
+        result.probe_kind = "OPERATIONAL_VEHICLE_POSITION_FRAME"
+        result.source_status = "ENGINE_OBSERVED_DYNAMIC"
+        result.vehicles = collect_vehicle_positions(errors)
+        result.simulation_clock = collect_simulation_clock(errors)
+        result.counts = { vehicles = #result.vehicles }
+    elseif section == "train_footprints" then
+        result.probe_kind = "OPERATIONAL_TRAIN_FOOTPRINT_FRAME"
+        result.source_status = "ENGINE_OBSERVED_DYNAMIC"
+        result.vehicles = collect_train_footprints(errors)
+        result.simulation_clock = collect_simulation_clock(errors)
+        result.counts = { trains = #result.vehicles }
     elseif section == "stations" then
         local station_error
         result.station_demand, station_error = collect_station_demand(errors)

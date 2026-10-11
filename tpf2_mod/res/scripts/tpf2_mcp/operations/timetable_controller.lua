@@ -65,7 +65,9 @@ local function validate(line_id, parameters)
     if type(line_id) ~= "number" or type(parameters) ~= "table" then return nil, "line_id and timetable parameters are required" end
     local cycle = tonumber(parameters.cycle_seconds)
     local epoch = tonumber(parameters.epoch_game_time_ms)
+    local lease_expires = tonumber(parameters.control_lease_expires_at) or (wall_time() + 300)
     if cycle == nil or cycle < 60 or cycle > 86400 or epoch == nil or epoch < 0 then return nil, "cycle_seconds 60..86400 and epoch_game_time_ms are required" end
+    if parameters.enabled == true and (lease_expires < wall_time() + 10 or lease_expires > wall_time() + 3600) then return nil, "enabled timetable control lease must expire in 10..3600 seconds" end
     if type(parameters.stops) ~= "table" then return nil, "stops are required" end
     local stops = {}
     for _, value in ipairs(parameters.stops) do
@@ -81,6 +83,7 @@ local function validate(line_id, parameters)
     return {
         line_id = line_id, enabled = parameters.enabled == true,
         cycle_seconds = cycle, epoch_game_time_ms = epoch,
+        control_lease_expires_at = lease_expires,
         late_release_seconds = math.max(0, math.min(120, tonumber(parameters.late_release_seconds) or 30)),
         priority = type(parameters.priority) == "table" and parameters.priority or {}, stops = stops,
     }
@@ -165,6 +168,11 @@ end
 function M.tick()
     local current = game_time_seconds()
     if current == nil then return end
+    local expired = {}
+    for line_id, plan in pairs(plans) do
+        if plan.enabled == true and (plan.control_lease_expires_at or 0) <= wall_time() then expired[#expired + 1] = line_id end
+    end
+    for _, line_id in ipairs(expired) do M.clear(line_id) end
     for line_id, plan in pairs(plans) do
         if plan.enabled == true then
             if external_timetable_active(line_id) then
@@ -218,7 +226,7 @@ function M.status(line_id)
     for vehicle_id, state in pairs(vehicles) do
         if state.line_id == line_id then active[#active + 1] = { vehicle_id = vehicle_id, stop_index = state.stop_index, target_game_time = state.target_game_time, manual = state.manual, command_confirmed = state.command_confirmed } end
     end
-    return { controller_version = 2, line_id = line_id, enabled = plan.enabled, cycle_seconds = plan.cycle_seconds, epoch_game_time_ms = plan.epoch_game_time_ms, priority = plan.priority, active_vehicle_controls = active, last_error = last_error }
+    return { controller_version = 3, line_id = line_id, enabled = plan.enabled, cycle_seconds = plan.cycle_seconds, epoch_game_time_ms = plan.epoch_game_time_ms, control_lease_expires_at = plan.control_lease_expires_at, priority = plan.priority, active_vehicle_controls = active, last_error = last_error }
 end
 
 function M.save()

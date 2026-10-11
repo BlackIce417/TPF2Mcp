@@ -119,7 +119,7 @@ def main() -> None:
     default_input = bridge_dir() / "station-geometry.json"
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", type=Path, default=default_input)
-    parser.add_argument("--output-directory", type=Path, default=Path("ui/rail-map"))
+    parser.add_argument("--output-directory", type=Path, default=Path("var/rail-map"))
     parser.add_argument("--display-radius", type=float, default=500.0)
     args = parser.parse_args()
 
