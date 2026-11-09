@@ -1094,6 +1094,9 @@ def main() -> None:
     encoded = json.dumps(result, ensure_ascii=False, separators=(",", ":"))
     (args.output_directory / "rail-network-data.json").write_text(encoded + "\n", encoding="utf-8")
     manifest, tiles = build_manifest_and_tiles(result, args.tile_size)
+    from tpf2_mcp.junction_cache import write_junction_cache
+    junction_model = write_junction_cache(result, args.output_directory, manifest['generated_at'])
+    manifest['junction_topology_id'] = junction_model['topology_id']
     preview_manifest = write_station_previews(
         result,
         args.output_directory / "station-previews",

@@ -12,6 +12,13 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable
 
+from .native_ipc import (
+    CMD_REMOVE_PATH_RULE, CMD_REMOVE_ROUTING_RULE, CMD_REMOVE_SPEED_RULE,
+    CMD_REMOVE_STATION_RULE, CMD_UPSERT_PATH_RULE, CMD_UPSERT_ROUTING_RULE,
+    CMD_UPSERT_SPEED_RULE, CMD_UPSERT_STATION_RULE, ControllerCommandClient,
+    pack_path_rule, pack_routing_rule, pack_rule_key, pack_speed_rule,
+    pack_station_rule, publish_config,
+)
 from .save_scope import snapshot_save_id
 from .speed_zones import map_chainage_zone
 from .infrastructure_speed import build_infrastructure_speed_profile, compile_vehicle_speed_leases
@@ -101,8 +108,11 @@ class ControlEventLog:
 class NativeLeaseWriter:
     """Atomically publish bounded native leases and a legacy first lease."""
 
-    def __init__(self, bridge: Path):
+    def __init__(self, bridge: Path, command_client: ControllerCommandClient | None = None):
         self.path = Path(bridge) / "native-control.ini"
+        self.command_client = command_client or ControllerCommandClient()
+        self._command_epoch: int | None = None
+        self._published_commands: dict[tuple[str, int], bytes] = {}
 
     @staticmethod
     def _encode(raw: Any) -> str:
@@ -116,6 +126,54 @@ class NativeLeaseWriter:
     @staticmethod
     def _native_fields(kind: str, item: dict[str, Any]) -> dict[str, Any]:
         return {key: item[key] for key in item if key not in {"kind", "lease_id", "created_at"}}
+
+    @staticmethod
+    def _numeric_rule_id(item: dict[str, Any]) -> int:
+        identity = str(item.get("lease_id") or item.get("rule_id") or "")
+        if not identity:
+            raise ValueError("native lease requires lease_id")
+        value = int.from_bytes(hashlib.blake2b(identity.encode("utf-8"), digest_size=8,
+                                               person=b"tpf2-rule").digest(), "little")
+        return value or 1
+
+    @classmethod
+    def _command_rule(cls, item: dict[str, Any]) -> tuple[tuple[str, int], int, int, bytes]:
+        kind = str(item.get("kind") or "")
+        rule_id = cls._numeric_rule_id(item)
+        if kind == "speed":
+            return (kind, rule_id), CMD_UPSERT_SPEED_RULE, CMD_REMOVE_SPEED_RULE, pack_speed_rule(rule_id, item)
+        if kind == "station":
+            return (kind, rule_id), CMD_UPSERT_STATION_RULE, CMD_REMOVE_STATION_RULE, pack_station_rule(rule_id, item)
+        if kind == "routing":
+            return (kind, rule_id), CMD_UPSERT_ROUTING_RULE, CMD_REMOVE_ROUTING_RULE, pack_routing_rule(rule_id, item)
+        if kind == "path":
+            return (kind, rule_id), CMD_UPSERT_PATH_RULE, CMD_REMOVE_PATH_RULE, pack_path_rule(rule_id, item)
+        raise ValueError(f"unsupported native lease kind: {kind}")
+
+    def _write_commands(self, active: list[dict[str, Any]], epoch: int) -> None:
+        desired: dict[tuple[str, int], tuple[int, int, bytes]] = {}
+        for item in active:
+            key, upsert, remove, payload = self._command_rule(item)
+            desired[key] = (upsert, remove, payload)
+        reset = epoch != self._command_epoch
+        removed = [] if reset else [key for key in self._published_commands if key not in desired]
+        changed = [key for key, spec in desired.items()
+                   if reset or self._published_commands.get(key) != spec[2]]
+        if not reset and not removed and not changed:
+            return
+        with self.command_client.transaction() as transaction:
+            if reset:
+                transaction.clear_all_rules()
+            for key in removed:
+                kind, rule_id = key
+                remove_opcode = {"speed": CMD_REMOVE_SPEED_RULE, "station": CMD_REMOVE_STATION_RULE,
+                                 "routing": CMD_REMOVE_ROUTING_RULE, "path": CMD_REMOVE_PATH_RULE}[kind]
+                transaction.send(remove_opcode, pack_rule_key(rule_id))
+            for key in changed:
+                upsert, _remove, payload = desired[key]
+                transaction.send(upsert, payload)
+        self._command_epoch = epoch
+        self._published_commands = {key: spec[2] for key, spec in desired.items()}
 
     def write(self, generation: int, leases: list[dict[str, Any]], now: float | None = None) -> list[dict[str, Any]]:
         now = time.time() if now is None else now
@@ -144,6 +202,16 @@ class NativeLeaseWriter:
                     if key in {"kind", "lease_id", "created_at", "expires_at"} or raw is None:
                         continue
                     value[kind][key] = self._encode(raw)
+        shared_payload = "".join(
+            f"{section}.{key}={raw}\n"
+            for section in value.sections()
+            for key, raw in value[section].items()
+        ).encode("utf-8")
+        epoch = self.command_client.epoch()
+        if epoch is None:
+            publish_config(shared_payload)
+        else:
+            self._write_commands(active, epoch)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(".ini.tmp")
         with temporary.open("w", encoding="ascii") as stream:

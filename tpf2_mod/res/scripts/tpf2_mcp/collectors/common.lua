@@ -1,4 +1,9 @@
 local M = {}
+-- Reuse protected access functions instead of allocating a closure per field.
+-- Engine userdata and metatables remain protected; ordinary tables need no pcall.
+local function read_field(value, key) return value[key] end
+local function read_length(value) return #value end
+local cached_component_registry, component_types = nil, {}
 
 function M.clock()
     if os and type(os.clock) == "function" then
@@ -13,8 +18,16 @@ function M.entity_id(entity)
 end
 
 function M.component_type(name)
-    local ok, value = pcall(function() return api.type.ComponentType[name] end)
+    local registry = api and api.type and api.type.ComponentType
+    if registry ~= cached_component_registry then
+        cached_component_registry, component_types = registry, {}
+    end
+    local value = component_types[name]
+    if value ~= nil then return value end
+    local ok
+    ok, value = pcall(read_field, registry, name)
     if not ok or value == nil then return nil, "component type unavailable: " .. tostring(name) end
+    component_types[name] = value
     return value
 end
 
@@ -71,7 +84,11 @@ end
 
 function M.field(value, key)
     if value == nil then return nil end
-    local ok, result = pcall(function() return value[key] end)
+    if type(value) == "table" then
+        local result = rawget(value, key)
+        if result ~= nil or getmetatable(value) == nil then return result end
+    end
+    local ok, result = pcall(read_field, value, key)
     if ok then return result end
     return nil
 end
@@ -80,19 +97,23 @@ function M.array_count(value)
     if value == nil then return nil end
     -- Engine collections may be userdata rather than ordinary Lua tables.
     -- Their length metamethod is safe to query under pcall.
-    local ok, count = pcall(function() return #value end)
+    if type(value) == "table" and getmetatable(value) == nil then return #value end
+    local ok, count = pcall(read_length, value)
     if ok and type(count) == "number" then return count end
     return nil
 end
 
-function M.sequence_values(value)
+-- Return the length and storage base without copying the engine vector.
+function M.sequence_layout(value)
     local count = M.array_count(value)
-    if not count then return {} end
-    -- Engine repository arrays may be zero based while still exposing a Lua
-    -- length. Prefer 0..count-1 when that full range is populated.
+    if not count then return 0, 1 end
     local zero = M.field(value, 0)
     local one_past_zero_range = M.field(value, count)
-    local start_index = zero ~= nil and one_past_zero_range == nil and 0 or 1
+    return count, zero ~= nil and one_past_zero_range == nil and 0 or 1
+end
+
+function M.sequence_values(value)
+    local count, start_index = M.sequence_layout(value)
     local result = {}
     for index = start_index, start_index + count - 1 do
         local item = M.field(value, index)

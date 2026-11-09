@@ -1,0 +1,20 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>线路所 · 路网探索</title><link rel="stylesheet" href="./styles/sidebar.css"><link rel="stylesheet" href="./styles/junctions.css"></head><body>
+<header id="junction-header"><a class="brand" href="/?view=network">TPF2 <span>铁路调度</span></a><nav aria-label="功能导航"><a href="/?view=network">站场图</a><a href="throats.html">车站咽喉</a><a href="junctions.html" aria-current="page">线路所</a></nav><button id="junction-refresh" title="从当前游戏重新采集路网">↻ 刷新路网</button></header>
+<main id="junction-workspace"><aside id="junction-sidebar" class="app-sidebar app-sidebar-l">
+<div class="sidebar-heading"><span class="eyebrow">路网探索</span><h1>线路所候选</h1><p id="junction-status" role="status" aria-live="polite">正在读取路网…</p></div>
+<label class="search-box" for="junction-search"><span aria-hidden="true">⌕</span><input id="junction-search" type="search" placeholder="搜索车站或地点" autocomplete="off"></label>
+<button id="junction-overview" class="overview-button">⊞ 查看全部位置</button><div id="junction-sites" aria-label="候选地点列表"></div><p id="junction-empty" hidden>没有匹配地点，试试其他车站名。</p>
+<div class="sidebar-note"><span class="status-dot"></span>自动识别 · 等待核验<p>地点名称用于定位。选择地图上的标记，查看轨道连接。</p></div></aside>
+<section id="junction-stage" aria-label="可交互路网地图"><div id="junction-map-heading"><span class="eyebrow" id="junction-breadcrumb">全网 / 候选位置</span><h2 id="junction-title">从地图开始探索</h2><p id="junction-subtitle">点击地点，查看它连接了哪里</p></div>
+<div id="junction-toolbar" role="group" aria-label="地图工具"><button id="junction-fit">适应视图</button><button id="junction-zoom-in" aria-label="放大">＋</button><button id="junction-zoom-out" aria-label="缩小">−</button></div>
+<svg id="junction-map" viewBox="0 0 1100 700" role="img" aria-label="线路所地图，可点击地点和分支"></svg>
+<div id="junction-message" role="status" hidden><p id="junction-message-text"></p><button id="junction-retry">重新加载</button></div>
+<aside id="junction-inspector" class="app-sidebar app-sidebar-r" hidden><div class="inspector-head"><span class="eyebrow">已选地点</span><button id="junction-close" aria-label="返回全网">×</button></div>
+<h3 id="junction-selected-name"></h3><span class="review-badge">候选 · 尚未确认边界</span><div id="junction-summary"></div><p id="junction-advice"></p>
+<div class="segmented" role="group" aria-label="查看范围"><button id="junction-local" aria-pressed="false">道岔细节</button><button id="junction-connections" aria-pressed="true">连接去向</button></div>
+<h4>连接方向 <span>点击高亮</span></h4><div id="junction-branches"></div><button id="junction-clear-branch" hidden>清除分支选择</button>
+<details id="junction-technical"><summary>识别详情与原始编号</summary><pre id="junction-evidence"></pre></details></aside>
+<div id="junction-map-footer"><span id="junction-selection">拖动平移 · 滚轮缩放 · 点击地点进入</span><span id="junction-scale"></span></div></section></main>
+<template id="junction-site-template"><button class="site-card" type="button"><span class="site-number" data-field="number"></span><span class="site-card-copy"><strong data-field="name"></strong><span data-field="description"></span></span><span class="site-arrow" aria-hidden="true">↗</span></button></template>
+<template id="junction-branch-template"><button class="branch-card" type="button" aria-pressed="false"><span class="branch-swatch"></span><span><strong data-field="name"></strong><small data-field="description"></small></span><span aria-hidden="true">→</span></button></template>
+<script type="module" src="./pages/junctions/entry.js"></script></body></html>

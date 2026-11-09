@@ -57,6 +57,8 @@ class RailMapState:
         self.exporter = exporter
         self.stop = threading.Event()
         self.generation_lock = threading.Lock()
+        self.rail_refresh_lock = threading.Lock()
+        self.rail_refresh_job = {"status": "IDLE"}
         self.live_lock = threading.Lock()
         self.full_vehicle_lock = threading.Lock()
         self.status_lock = threading.Lock()
@@ -905,6 +907,51 @@ class RailMapState:
             self.last_snapshot_poll = now
             self.live_lock.release()
 
+    def rail_refresh_status(self) -> dict:
+        with self.rail_refresh_lock:
+            return dict(self.rail_refresh_job)
+
+    def request_rail_refresh(self) -> dict:
+        with self.rail_refresh_lock:
+            if self.rail_refresh_job['status'] in ('QUEUED', 'COLLECTING', 'BUILDING'):
+                return dict(self.rail_refresh_job)
+            self.rail_refresh_job = dict(status='QUEUED', started_at=time.time())
+            result = dict(self.rail_refresh_job)
+        threading.Thread(target=self._refresh_rail_from_game, name='rail-manual-refresh', daemon=True).start()
+        return result
+
+    def _refresh_rail_from_game(self) -> None:
+        def update(**values):
+            with self.rail_refresh_lock:
+                self.rail_refresh_job.update(values)
+        try:
+            client = BridgeClient(self.bridge, timeout_seconds=60)
+            if not client.status().get('connected'):
+                raise BridgeError('游戏未连接，请进入存档后重试。')
+            # Serialize against save switching and automatic export generation.
+            with self.live_lock, self.generation_lock:
+                update(status='COLLECTING')
+                save_id = snapshot_save_id(client.game_state(force_refresh=True))
+                client.export_rail_network()
+                if snapshot_save_id(client.game_state(force_refresh=True)) != save_id:
+                    raise BridgeError('采集期间存档发生切换，请重试。')
+                update(status='BUILDING')
+                source = self.bridge / 'rail-network.json'
+                completed = subprocess.run(
+                    [sys.executable, '-B', str(self.exporter), '--input', str(source),
+                     '--output-directory', str(self.root), '--save-id', save_id],
+                    cwd=self.exporter.parents[1], capture_output=True, text=True, timeout=180,
+                )
+                if completed.returncode:
+                    raise RuntimeError('路网生成失败，请检查服务日志后重试。')
+                self.last_bridge_network_mtime = self._mtime(source)
+                self.live_network_mtime = 0
+                self.status_cached_at = 0
+                update(status='SUCCEEDED', finished_at=time.time(), save_id=save_id,
+                       generation=self.read_json(self.root/'rail-network-manifest.json').get('generated_at'))
+        except (BridgeError, OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+            update(status='FAILED', finished_at=time.time(), error=str(exc))
+
     def regenerate_if_changed(self) -> None:
         source = self.bridge / "rail-network.json"
         current = self._mtime(source)
@@ -965,10 +1012,7 @@ class RailMapState:
         live = self.read_json(self.bridge / "live-rail-state.json")
         heartbeat = self.read_json(self.bridge / "heartbeat.json")
         native_status = self.read_json(self.bridge / "native-control-status.json")
-        control_config = self.control_system.config()
-        native_requested = (control_config.get("mode") == "ARMED"
-                            and any((control_config.get("features") or {}).get(name) for name in ("routing", "speed", "station", "path")))
-        self.native_supervisor_status = self.native_supervisor.reconcile(allow_inject=native_requested)
+        self.native_supervisor_status = self.native_supervisor.reconcile()
         native_status.update(self.native_supervisor_status)
         self.control_system.cycle(snapshot, manifest, manifest, live, heartbeat, native_status, plan)
 

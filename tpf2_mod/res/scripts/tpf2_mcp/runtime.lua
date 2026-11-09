@@ -2,14 +2,26 @@ local config = require "tpf2_mcp/config"
 local json = require "tpf2_mcp/json"
 local state = require "tpf2_mcp/state"
 local operations = require "tpf2_mcp/operations/dispatcher"
+local common = require "tpf2_mcp/collectors/common"
+local native_loader = require "tpf2_mcp/native_loader"
+local train_telemetry = require "tpf2_mcp/collectors/train_telemetry"
 
-local M = {}
+local M = { hot_reload_protocol_version = 1 }
 local last_request_id = nil
 local sequence = 0
 local probe = { attempted = false }
 local started = false
 local update_count = 0
-local last_footprint_update = -5
+local last_footprint_update, last_position_update, last_train_binary_update, last_train_identity_update = nil, nil, nil, nil
+local train_wrapper_probe_published = false
+local telemetry_performance = {}
+
+local function interval_updates(value, fallback)
+    value = tonumber(value)
+    if value == nil or value ~= value or math.abs(value) == math.huge then value = fallback end
+    if value <= 0 then return 0 end
+    return math.max(1, math.ceil(value - 1e-9))
+end
 
 local function path(name)
     if type(config.bridge_dir) ~= "string" or config.bridge_dir == "" then return nil end
@@ -34,16 +46,42 @@ local function write_file(name, content)
     if target == nil then return false, "bridge directory unavailable" end
     local handle, err = io.open(target, "w")
     if not handle then return false, err end
-    handle:write(content)
-    handle:flush()
-    handle:close()
+    local written, write_error = handle:write(content)
+    -- close flushes the Lua stream; a separate flush immediately before it is redundant.
+    local closed, close_error = handle:close()
+    if not written then return false, write_error end
+    if not closed then return false, close_error end
     return true
 end
 
 local function write_json(name, object)
+    local started = common.clock()
     local ok, encoded = pcall(json.encode, object)
+    local encoded_at = common.clock()
     if not ok then return false, encoded end
-    return write_file(name, encoded)
+    local written, err
+    if native_loader.available and native_loader.publish_json(name, encoded) then
+        written = true
+    else
+        written, err = write_file(name, encoded)
+    end
+    if name:match("^operational%-telemetry%-") and object.section then
+        local stats = telemetry_performance[object.section] or {
+            count = 0, failures = 0, max_cpu_ms = 0,
+            timing_basis = "PROCESS_CPU_NOT_WALL_TIME",
+        }
+        local finished = common.clock()
+        stats.count = stats.count + 1
+        stats.failures = stats.failures + (written and 0 or 1)
+        stats.collection_cpu_ms = tonumber(object.duration_ms) or 0
+        stats.encode_cpu_ms = (encoded_at - started) * 1000
+        stats.write_cpu_ms = (finished - encoded_at) * 1000
+        stats.last_cpu_ms = stats.collection_cpu_ms + stats.encode_cpu_ms + stats.write_cpu_ms
+        stats.max_cpu_ms = math.max(stats.max_cpu_ms, stats.last_cpu_ms)
+        stats.bytes = #encoded
+        telemetry_performance[object.section] = stats
+    end
+    return written, err
 end
 
 local function log(level, message)
@@ -148,6 +186,8 @@ local function heartbeat()
         allow_write_operations = config.allow_write_operations == true,
         allowed_operations = allowed_operations,
         last_update = now(),
+        telemetry_performance = telemetry_performance,
+        hot_reload = config.hot_reload_status,
         probe = probe,
     }
 end
@@ -261,13 +301,16 @@ end
 
 local function report_live_vehicles_if_due()
     local interval = tonumber(config.vehicle_telemetry_report_interval_seconds) or 0.2
-    if interval <= 0 then return end
-    -- TPF2 advances the verified simulation update counter in 200 ms steps.
-    -- os.clock measures process CPU consumption and produced 0.3-0.45 s wall
-    -- intervals, so the position frame follows each engine update directly.
+    local updates = interval_updates(config.vehicle_telemetry_report_interval_updates,
+        interval_updates(interval / 0.2, 1))
+    if updates == 0 then return end
+    if last_position_update and update_count - last_position_update < updates then return end
+    last_position_update = update_count
     local telemetry = state.operational_telemetry("vehicle_positions")
     telemetry.report_mode = "PERIODIC"
-    telemetry.report_interval_seconds = interval
+    telemetry.report_interval_seconds = updates * 0.2
+    telemetry.report_interval_updates = updates
+    telemetry.report_interval_basis = "SIMULATION_UPDATES_NOT_WALL_TIME"
     local ok, err = write_json("operational-telemetry-vehicle_positions.json", telemetry)
     if not ok then
         log("WARN", "cannot publish live vehicle telemetry: " .. tostring(err))
@@ -275,15 +318,46 @@ local function report_live_vehicles_if_due()
 end
 
 local function report_train_footprints_if_due()
-    -- Engine updates are 200 ms apart in the verified save.  A complete train
-    -- body sample every five updates gives 1 Hz clearance evidence.
-    if update_count - last_footprint_update < 5 then return end
+    local updates = interval_updates(config.train_footprint_report_interval_updates, 1)
+    if updates == 0 then return end
+    if last_footprint_update and update_count - last_footprint_update < updates then return end
     last_footprint_update = update_count
     local telemetry = state.operational_telemetry("train_footprints")
     telemetry.report_mode = "PERIODIC"
-    telemetry.report_interval_seconds = 1.0
+    telemetry.report_interval_seconds = updates * 0.2
+    telemetry.report_interval_updates = updates
+    telemetry.report_interval_basis = "SIMULATION_UPDATES_NOT_WALL_TIME"
     local ok, err = write_json("operational-telemetry-train_footprints.json", telemetry)
     if not ok then log("WARN", "cannot publish train footprints: " .. tostring(err)) end
+end
+
+local function report_train_binary_if_due()
+    local updates = interval_updates(config.train_binary_report_interval_updates, 1)
+    if updates == 0 then return end
+    if last_train_binary_update and update_count - last_train_binary_update < updates then return end
+    last_train_binary_update = update_count
+    local ok, detail = train_telemetry.publish(update_count)
+    if not ok then
+        log("WARN", "cannot publish binary train wrappers: " .. tostring(detail and detail.error or "unknown error"))
+        return
+    end
+    if not train_wrapper_probe_published and detail and detail.trains and detail.trains > 0 then
+        local probe_ok, probe_error = write_json("train-wrapper-probe.json", train_telemetry.probe(4))
+        if probe_ok then
+            train_wrapper_probe_published = true
+        else
+            log("WARN", "cannot publish train wrapper probe: " .. tostring(probe_error))
+        end
+    end
+end
+
+local function report_train_identities_if_due()
+    local updates = interval_updates(config.train_identity_report_interval_updates, 25)
+    if updates == 0 then return end
+    if last_train_identity_update and update_count - last_train_identity_update < updates then return end
+    last_train_identity_update = update_count
+    local ok, err = write_json("train-identities.json", train_telemetry.identities())
+    if not ok then log("WARN", "cannot publish train identities: " .. tostring(err)) end
 end
 
 function M.start()
@@ -309,6 +383,37 @@ function M.set_track_resources(entries)
     state.set_track_resources(entries)
 end
 
+local function refresh_rail_network_if_due()
+    if not native_loader.available or not native_loader.network_refresh_due() then return end
+    state.invalidate_rail_network()
+    local network = state.rail_network()
+    network.report_mode = "UNIFIED_PERIODIC_OR_EXPLICIT_REFRESH"
+    local ok, err = write_json("rail-network.json", network)
+    if not ok then log("WARN", "cannot publish refreshed rail network: " .. tostring(err)) end
+end
+
+-- Only transient read-side state is transferred. The dispatcher/timetable
+-- modules stay loaded, preserving watch-dogs, operation IDs and control leases.
+function M.export_reload_state()
+    return { version = 1, last_request_id = last_request_id, sequence = sequence,
+        probe = probe, started = started, update_count = update_count,
+        last_footprint_update = last_footprint_update, last_position_update = last_position_update,
+        last_train_binary_update = last_train_binary_update,
+        last_train_identity_update = last_train_identity_update,
+        train_wrapper_probe_published = train_wrapper_probe_published,
+        telemetry_performance = telemetry_performance }
+end
+function M.import_reload_state(value)
+    assert(type(value) == "table" and value.version == 1, "incompatible runtime state")
+    last_request_id, sequence = value.last_request_id, value.sequence
+    probe, started, update_count = value.probe, value.started, value.update_count
+    last_footprint_update, last_position_update = value.last_footprint_update, value.last_position_update
+    last_train_binary_update = value.last_train_binary_update
+    last_train_identity_update = value.last_train_identity_update
+    train_wrapper_probe_published = value.train_wrapper_probe_published == true
+    telemetry_performance = value.telemetry_performance
+end
+
 function M.save() return operations.save_state() end
 function M.load(value) operations.load_state(value) end
 
@@ -316,14 +421,19 @@ function M.tick()
     update_count = update_count + 1
     operations.tick()
     if not started then M.start() end
+    refresh_rail_network_if_due()
     report_live_vehicles_if_due()
     report_train_footprints_if_due()
+    report_train_binary_if_due()
+    report_train_identities_if_due()
     -- Stagger state sampling from full train bodies. Five simulation updates
     -- is a nominal cadence, not a guaranteed wall-clock sampling rate.
-    if update_count % 5 == 2 then
+    local signal_updates = interval_updates(config.signal_state_report_interval_updates, 5)
+    if signal_updates > 0 and update_count % signal_updates == 2 % signal_updates then
         local telemetry = state.operational_telemetry("signal_states")
         telemetry.report_mode = "PERIODIC"
-        telemetry.report_interval_updates = 5
+        telemetry.report_interval_updates = signal_updates
+        telemetry.report_interval_basis = "SIMULATION_UPDATES_NOT_WALL_TIME"
         local ok, err = write_json("operational-telemetry-signal_states.json", telemetry)
         if not ok then log("WARN", "cannot publish signal states: " .. tostring(err)) end
     end

@@ -8,6 +8,8 @@ import math
 import time
 from pathlib import Path
 
+from tpf2_mcp.station_throats import identify_station_throats
+
 
 DEFAULT_MARGIN_M = 50.0
 MINIMUM_SPAN_M = 0.0
@@ -553,6 +555,7 @@ def build_station_previews(
 ) -> tuple[dict, dict[int, dict]]:
     """Build deterministic preview payloads from a prepared physical network."""
     generated_at = int(time.time()) if generated_at is None else int(generated_at)
+    throat_model = identify_station_throats(network)
     node_by_id = {int(item["entity_id"]): item for item in network.get("nodes", [])}
     edges = network.get("edges", [])
     edge_by_id = {int(edge["entity_id"]): edge for edge in edges}
@@ -638,6 +641,15 @@ def build_station_previews(
             "diagram_type": "ENGINE_OBSERVED_STATION_PHYSICAL_PREVIEW",
             "station": station,
             "station_groups": station_groups,
+            "throat_geometry": {
+                "edges": [edge_by_id[eid] for eid in sorted({eid for region in throat_model['regions']
+                          if station_id in region['station_group_ids'] for eid in region['edge_ids'] + region['core_edge_ids']})],
+                "nodes": [node_by_id[nid] for nid in sorted({edge_by_id[eid][key] for region in throat_model['regions']
+                          if station_id in region['station_group_ids'] for eid in region['edge_ids'] + region['core_edge_ids']
+                          for key in ('node0', 'node1')})],
+            },
+            "throat_model": {**throat_model, "regions": [region for region in throat_model["regions"]
+                             if station_id in region["station_group_ids"]]},
             "platforms": combined_platforms,
             "bounds": bounds,
             "scope": scope,
@@ -662,6 +674,7 @@ def build_station_previews(
         index.append({
             "station_id": station_id,
             "name": station.get("name"),
+            "throat_region_count": sum(station_id in r['station_group_ids'] for r in throat_model['regions']),
             "file": f"station-{station_id}.json",
             "edge_count": len(preview_edges),
             "bounds": bounds,

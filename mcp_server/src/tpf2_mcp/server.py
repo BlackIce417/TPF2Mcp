@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import math
+import re
 import sys
 import time
 from typing import Any
@@ -14,6 +16,12 @@ from .planning import DecisionSupport
 from .operations import OperationController, capabilities as operation_capabilities
 from .tasks import TaskOrchestrator, goal_capabilities
 from .dispatch import agent_operations_guide, station_waiting_state, vehicle_dispatch_state
+from .train_control import TrainControlError, TrainControlService
+from .audit import write_audit, start_audit, safe_arguments
+from .world_mcp import (
+    LoaderWorldError, LoaderWorldRepository, WORLD_TOOL_DEFINITIONS,
+    WORLD_TOOL_NAMES, call_world_tool,
+)
 
 
 def _bridge() -> BridgeClient | MockBridge:
@@ -22,8 +30,20 @@ def _bridge() -> BridgeClient | MockBridge:
     return BridgeClient()
 
 
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return value
+
+
 def _tool_result(value: Any) -> dict[str, Any]:
-    return {"content": [{"type": "text", "text": json.dumps(value, ensure_ascii=False, indent=2)}], "structuredContent": value}
+    safe = _json_safe(value)
+    return {"content": [{"type": "text", "text": json.dumps(safe, ensure_ascii=False, indent=2, allow_nan=False)}],
+            "structuredContent": safe}
 
 
 def _error(code: int, message: str, request_id: Any = None) -> dict[str, Any]:
@@ -35,6 +55,136 @@ _intelligence_cache: dict[int, tuple[int | None, NetworkIntelligenceIndex]] = {}
 _planning_cache: dict[int, tuple[int | None, DecisionSupport]] = {}
 _operation_controllers: dict[int, OperationController] = {}
 _task_orchestrators: dict[int, TaskOrchestrator] = {}
+_train_control_service = TrainControlService()
+_loader_world_repository = LoaderWorldRepository()
+
+
+_STATEFUL_TOOLS = {
+    "propose_operation", "validate_operation", "create_rollback_operation",
+    "create_task", "plan_task", "approve_task_step", "continue_task", "cancel_task",
+    "set_train_speed_limit", "cancel_train_speed_limit",
+}
+_DESTRUCTIVE_TOOLS = {"continue_task", "cancel_task", "set_train_speed_limit", "cancel_train_speed_limit"}
+_IDEMPOTENT_WRITES = {"set_train_speed_limit", "cancel_train_speed_limit"}
+
+
+def _tool_title(name: str) -> str:
+    return " ".join(part.capitalize() for part in name.split("_"))
+
+
+def _standardize_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Add the discovery and safety metadata expected by OpenAI MCP clients."""
+    result = []
+    for original in tools:
+        tool = dict(original)
+        name = tool["name"]
+        tool.setdefault("title", _tool_title(name))
+        # Legacy tools intentionally retain their existing structuredContent
+        # shape (some return arrays). New tools define a narrower schema.
+        tool.setdefault("outputSchema", {
+            "anyOf": [{"type": "object"}, {"type": "array"}],
+        })
+        annotations = dict(tool.get("annotations", {}))
+        read_only = name not in _STATEFUL_TOOLS
+        annotations.update({
+            "readOnlyHint": read_only,
+            "destructiveHint": name in _DESTRUCTIVE_TOOLS,
+            "idempotentHint": read_only or name in _IDEMPOTENT_WRITES,
+            "openWorldHint": False,
+        })
+        tool["annotations"] = annotations
+        result.append(tool)
+    return result
+
+
+_TRAIN_CONTROL_TOOLS = [
+    {
+        "name": "get_train_control_snapshot",
+        "title": "Get Train Control Snapshot",
+        "description": "Read current Loader train telemetry for dispatch decisions. Use display_name in user-facing reasoning; vehicle_id is returned only as the stable internal identity. Optionally include per-car wrappers.",
+        "inputSchema": {"type": "object", "properties": {
+            "display_name": {"type": "string", "minLength": 1, "maxLength": 256},
+            "include_parts": {"type": "boolean", "default": False},
+        }, "additionalProperties": False},
+        "outputSchema": {"type": "object", "properties": {
+            "schema_version": {"type": "integer"}, "sample_sequence": {"type": "integer"},
+            "sample_time_us": {"type": "integer"}, "train_count": {"type": "integer"},
+            "telemetry": {"type": "object"}, "trains": {"type": "array", "items": {"type": "object"}},
+        }, "required": ["schema_version", "sample_sequence", "train_count", "telemetry", "trains"]},
+    },
+    {
+        "name": "set_train_speed_limit",
+        "title": "Set Train Speed Limit",
+        "description": "Apply a short-lived Controller speed rule to one train's verified forward route window. Read a fresh snapshot first. Requires the exact confirmation APPLY_SPEED_LIMIT:<command_id>; retries with the same command_id are deduplicated.",
+        "inputSchema": {"type": "object", "properties": {
+            "command_id": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$"},
+            "display_name": {"type": "string", "minLength": 1, "maxLength": 256},
+            "speed_kmh": {"type": "number", "minimum": 0, "maximum": 500, "description": "0 requests a temporary hold; positive values request a speed limit."},
+            "reason": {"type": "object", "oneOf": [
+                {"properties": {"kind": {"const": "FRONT_TRAIN_TOO_CLOSE"},
+                                "distance_threshold_m": {"type": "number", "exclusiveMinimum": 0}},
+                 "required": ["kind", "distance_threshold_m"], "additionalProperties": False},
+                {"properties": {"kind": {"const": "WAIT_ENTRY_SIGNAL"},
+                                "waiting_for_train": {"type": "string", "minLength": 1, "maxLength": 256}},
+                 "required": ["kind", "waiting_for_train"], "additionalProperties": False}
+            ], "description": "Dispatch justification: front train closer than threshold, or waiting for entry signal while yielding to a named train. This is caller-provided reasoning, not measured evidence."},
+            "lookahead_edges": {"type": "integer", "minimum": 1, "maximum": 192, "default": 24},
+            "expires_in_seconds": {"type": "integer", "minimum": 5, "maximum": 120, "default": 20},
+            "confirmation": {"type": "string", "description": "Exact value APPLY_SPEED_LIMIT:<command_id>."},
+        }, "required": ["command_id", "display_name", "speed_kmh", "confirmation", "reason"], "additionalProperties": False},
+        "outputSchema": {"type": "object", "properties": {
+            "schema_version": {"type": "integer"}, "command_id": {"type": "string"},
+            "display_name": {"type": "string"}, "vehicle_id": {"type": "integer"},
+            "speed_kmh": {"type": "number"}, "expires_at": {"type": "integer"},
+            "status": {"type": "string"}, "result": {"type": "string"},
+        }, "required": ["schema_version", "command_id", "display_name", "vehicle_id", "speed_kmh", "expires_at", "status", "result"]},
+    },
+    {
+        "name": "cancel_train_speed_limit",
+        "title": "Cancel Train Speed Limit",
+        "description": "Cancel one speed rule created by set_train_speed_limit. Requires the exact confirmation CANCEL_SPEED_LIMIT:<command_id> and is safe to retry.",
+        "inputSchema": {"type": "object", "properties": {
+            "command_id": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$"},
+            "confirmation": {"type": "string", "description": "Exact value CANCEL_SPEED_LIMIT:<command_id>."},
+        }, "required": ["command_id", "confirmation"], "additionalProperties": False},
+        "outputSchema": {"type": "object", "properties": {
+            "schema_version": {"type": "integer"}, "command_id": {"type": "string"},
+            "display_name": {"type": "string"}, "result": {"type": "string"},
+        }, "required": ["schema_version", "command_id", "result"]},
+    },
+    {
+        "name": "get_active_train_controls",
+        "title": "Get Active Train Controls",
+        "description": "List unexpired speed controls issued by this MCP server process.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "outputSchema": {"type": "object", "properties": {
+            "schema_version": {"type": "integer"}, "active_count": {"type": "integer"},
+            "controls": {"type": "array", "items": {"type": "object"}},
+        }, "required": ["schema_version", "active_count", "controls"]},
+    },
+]
+
+_RUNTIME_STATUS_TOOL = {
+    "name": "get_bridge_status",
+    "title": "Get Native Runtime Status",
+    "description": "Report the current tpf2_loader shared-memory telemetry and tpf2_controller command-channel health. This does not inspect the retired heartbeat.json file bridge.",
+    "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    "outputSchema": {"type": "object", "properties": {
+        "schema_version": {"type": "integer"},
+        "transport_generation": {"type": "string"},
+        "loader": {"type": "object"},
+        "controller": {"type": "object"},
+        "legacy_file_bridge": {"type": "object"},
+    }, "required": ["schema_version", "transport_generation", "loader", "controller", "legacy_file_bridge"]},
+}
+
+_CURRENT_NATIVE_TOOL_NAMES = {
+    "get_bridge_status",
+    "get_train_control_snapshot",
+    "set_train_speed_limit",
+    "cancel_train_speed_limit",
+    "get_active_train_controls",
+} | WORLD_TOOL_NAMES
 
 
 def _index(bridge: BridgeClient | MockBridge, force_refresh: bool = False) -> SnapshotIndex:
@@ -112,11 +262,47 @@ def _entity(bridge: BridgeClient | MockBridge, key: str, entity_id: int) -> dict
 
 
 def handle(message: dict[str, Any], bridge: BridgeClient | MockBridge) -> dict[str, Any] | None:
+    if message.get('method') != 'tools/call':
+        return _handle(message, bridge)
+    params = message.get('params') or {}
+    invocation = {'request_id': message.get('id'), 'tool': params.get('name'),
+                  'arguments': safe_arguments(params.get('arguments', {}))}
+    started = time.monotonic()
+    write_audit({'event': 'tool_call_started', **invocation})
+    try:
+        response = _handle(message, bridge)
+    except Exception as exc:
+        write_audit({'event': 'tool_call_finished', **invocation, 'status': 'ERROR',
+                     'error': str(exc), 'duration_ms': round((time.monotonic()-started)*1000, 3)})
+        raise
+    result = (response or {}).get('result', {})
+    structured = result.get('structuredContent', {})
+    receipt = {key: structured[key] for key in ('command_id', 'rule_id', 'reason', 'reason_text', 'result', 'status')
+               if isinstance(structured, dict) and key in structured}
+    error = (response or {}).get('error')
+    write_audit({'event': 'tool_call_finished', **invocation,
+                 'status': 'ERROR' if error or result.get('isError') else 'SUCCESS',
+                 'error': error, 'command_receipt': receipt,
+                 'duration_ms': round((time.monotonic()-started)*1000, 3)})
+    return response
+
+
+def _handle(message: dict[str, Any], bridge: BridgeClient | MockBridge) -> dict[str, Any] | None:
     method, request_id, params = message.get("method"), message.get("id"), message.get("params", {})
     if method == "notifications/initialized":
         return None
     if method == "initialize":
-        return {"jsonrpc": "2.0", "id": request_id, "result": {"protocolVersion": "2025-03-26", "serverInfo": {"name": "tpf2-mcp", "version": "0.1.0"}, "capabilities": {"tools": {}, "resources": {}}}}
+        return {"jsonrpc": "2.0", "id": request_id, "result": {
+            "protocolVersion": "2025-03-26",
+            "serverInfo": {"name": "tpf2-mcp", "version": "0.4.0"},
+            "capabilities": {"tools": {}},
+            "instructions": (
+                "Only Loader shared-memory telemetry and Controller V2 command tools are exposed. Legacy file-bridge "
+                "world, network, station, analysis, and task tools are isolated until migrated. Read current telemetry "
+                "before control; refer to trains by display_name. Never control on stale route data. Speed writes are "
+                "short-lived and require command_id-scoped confirmation."
+            ),
+        }}
     if method == "tools/list":
         tools = [
             {"name": "get_bridge_status", "description": "Return TPF2 bridge liveness and probe state.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
@@ -198,8 +384,17 @@ def handle(message: dict[str, Any], bridge: BridgeClient | MockBridge) -> dict[s
             {"name": "find_high_waiting_stations", "description": "Returns high-waiting stations only when waiting telemetry is available; otherwise explicitly reports metric unavailability.", "inputSchema": {"type": "object", "properties": {"waiting_threshold": {"type": "integer", "minimum": 0}}, "additionalProperties": False}},
             {"name": "find_stations_without_lines", "description": "List station groups with no resolved line stops.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
         ]
-        return {"jsonrpc": "2.0", "id": request_id, "result": {"tools": tools}}
+        if isinstance(bridge, MockBridge):
+            # Retain the old surface only inside unit fixtures while its domain
+            # implementations are migrated. No production transport uses this.
+            tools.extend(_TRAIN_CONTROL_TOOLS)
+            listed_tools = tools
+        else:
+            listed_tools = [_RUNTIME_STATUS_TOOL, *_TRAIN_CONTROL_TOOLS, *WORLD_TOOL_DEFINITIONS]
+        return {"jsonrpc": "2.0", "id": request_id, "result": {"tools": _standardize_tools(listed_tools)}}
     if method == "resources/list":
+        if not isinstance(bridge, MockBridge):
+            return {"jsonrpc": "2.0", "id": request_id, "result": {"resources": []}}
         return {"jsonrpc": "2.0", "id": request_id, "result": {"resources": [
             {"uri": "tpf2://game", "name": "TPF2 game overview", "mimeType": "application/json"},
             {"uri": "tpf2://network", "name": "TPF2 transport network", "mimeType": "application/json"},
@@ -212,8 +407,69 @@ def handle(message: dict[str, Any], bridge: BridgeClient | MockBridge) -> dict[s
     try:
         if method == "tools/call":
             name = params.get("name")
+            if not isinstance(bridge, MockBridge) and name not in _CURRENT_NATIVE_TOOL_NAMES:
+                return _error(-32601, f"TOOL_ISOLATED: {name} has not been migrated to Loader/Controller V2", request_id)
+            if not isinstance(bridge, MockBridge) and name in WORLD_TOOL_NAMES:
+                arguments = params.get("arguments", {})
+                if not isinstance(arguments, dict):
+                    return _error(-32602, "arguments must be an object", request_id)
+                value = call_world_tool(_loader_world_repository, name, arguments)
+                return {"jsonrpc": "2.0", "id": request_id, "result": _tool_result(value)}
+            if name == "get_train_control_snapshot":
+                arguments = params.get("arguments", {})
+                display_name = arguments.get("display_name")
+                include_parts = arguments.get("include_parts", False)
+                if display_name is not None and (not isinstance(display_name, str) or not display_name or len(display_name) > 256):
+                    return _error(-32602, "display_name must be a non-empty string of at most 256 characters", request_id)
+                if not isinstance(include_parts, bool):
+                    return _error(-32602, "include_parts must be a boolean", request_id)
+                value = _train_control_service.snapshot(display_name=display_name, include_parts=include_parts)
+                return {"jsonrpc": "2.0", "id": request_id, "result": _tool_result(value)}
+            if name == "set_train_speed_limit":
+                arguments = params.get("arguments", {})
+                command_id, display_name = arguments.get("command_id"), arguments.get("display_name")
+                speed_kmh = arguments.get("speed_kmh")
+                lookahead = arguments.get("lookahead_edges", 24)
+                expiry = arguments.get("expires_in_seconds", 20)
+                confirmation = arguments.get("confirmation")
+                if not isinstance(command_id, str) or re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", command_id) is None:
+                    return _error(-32602, "command_id must match [A-Za-z0-9._:-]{1,128}", request_id)
+                if not isinstance(display_name, str) or not display_name or len(display_name) > 256:
+                    return _error(-32602, "display_name must be a non-empty string of at most 256 characters", request_id)
+                if not isinstance(speed_kmh, (int, float)) or isinstance(speed_kmh, bool) or not 0 <= speed_kmh <= 500:
+                    return _error(-32602, "speed_kmh must be numeric from 0 to 500", request_id)
+                if not isinstance(lookahead, int) or isinstance(lookahead, bool) or not 1 <= lookahead <= 192:
+                    return _error(-32602, "lookahead_edges must be an integer from 1 to 192", request_id)
+                if not isinstance(expiry, int) or isinstance(expiry, bool) or not 5 <= expiry <= 120:
+                    return _error(-32602, "expires_in_seconds must be an integer from 5 to 120", request_id)
+                if not isinstance(confirmation, str):
+                    return _error(-32602, "confirmation must be a string", request_id)
+                value = _train_control_service.set_speed_limit(
+                    command_id=command_id, display_name=display_name, speed_kmh=float(speed_kmh),
+                    lookahead_edges=lookahead, expires_in_seconds=expiry, confirmation=confirmation,
+                    reason=arguments.get('reason'))
+                return {"jsonrpc": "2.0", "id": request_id, "result": _tool_result(value)}
+            if name == "cancel_train_speed_limit":
+                arguments = params.get("arguments", {})
+                command_id, confirmation = arguments.get("command_id"), arguments.get("confirmation")
+                if not isinstance(command_id, str) or re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", command_id) is None:
+                    return _error(-32602, "command_id must match [A-Za-z0-9._:-]{1,128}", request_id)
+                if not isinstance(confirmation, str):
+                    return _error(-32602, "confirmation must be a string", request_id)
+                value = _train_control_service.cancel_speed_limit(command_id=command_id, confirmation=confirmation)
+                return {"jsonrpc": "2.0", "id": request_id, "result": _tool_result(value)}
+            if name == "get_active_train_controls":
+                if params.get("arguments", {}):
+                    return _error(-32602, "get_active_train_controls accepts no arguments", request_id)
+                return {"jsonrpc": "2.0", "id": request_id,
+                        "result": _tool_result(_train_control_service.active_controls())}
             if name == "get_bridge_status":
-                return {"jsonrpc": "2.0", "id": request_id, "result": _tool_result(bridge.status())}
+                status = _train_control_service.runtime_status()
+                try:
+                    status["world_data"] = _loader_world_repository.status()
+                except LoaderWorldError as exc:
+                    status["world_data"] = {"connected": False, "reason": str(exc)}
+                return {"jsonrpc": "2.0", "id": request_id, "result": _tool_result(status)}
             if name == "probe_vehicle_speed_control":
                 if params.get("arguments", {}):
                     return _error(-32602, "probe_vehicle_speed_control accepts no arguments or write options", request_id)
@@ -569,18 +825,21 @@ def handle(message: dict[str, Any], bridge: BridgeClient | MockBridge) -> dict[s
                 return {"jsonrpc": "2.0", "id": request_id, "result": _tool_result(_index(bridge).stations_without_lines())}
             return _error(-32602, f"unknown tool: {name}", request_id)
         if method == "resources/read":
+            if not isinstance(bridge, MockBridge):
+                return _error(-32601, "RESOURCE_ISOLATED: legacy file-bridge resources are not exposed", request_id)
             uri = params.get("uri")
             index = _index(bridge)
             resource_values = {"tpf2://game": index.overview(), "tpf2://network": index.network_summary(), "tpf2://network/lines": [_index(bridge)._line(x) for x in index.line_by_id.values()], "tpf2://network/stations": [_index(bridge)._station(x) for x in index.station_by_id.values()], "tpf2://network/vehicles": [_index(bridge)._vehicle(x) for x in index.vehicle_by_id.values()], "tpf2://cargo-types": index.cargo_types(), "tpf2://capabilities": index.capabilities(), "tpf2://agent-operations": agent_operations_guide()}
             if uri in resource_values:
                 return {"jsonrpc": "2.0", "id": request_id, "result": {"contents": [{"uri": uri, "mimeType": "application/json", "text": json.dumps(resource_values[uri], ensure_ascii=False)}]}}
             return _error(-32602, "unknown resource", request_id)
-    except BridgeError as exc:
+    except (BridgeError, TrainControlError, LoaderWorldError) as exc:
         return _error(-32001, str(exc), request_id)
     return _error(-32601, f"method not found: {method}", request_id)
 
 
 def main() -> int:
+    start_audit()
     # Windows console code pages otherwise leak into redirected stdio and can
     # corrupt valid UTF-8 game names in JSON-RPC captures.
     if hasattr(sys.stdin, "reconfigure"):

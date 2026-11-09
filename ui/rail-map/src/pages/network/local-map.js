@@ -132,11 +132,15 @@ window.RAIL_MAP_APP_LOADED = true;
     $mapLayer.attr('clip-path', `url(#${clipId})`);
   }
 
+  const throatRegions = preview.throat_model?.regions || [];
+  const throatEdges = new Set(throatRegions.flatMap(region => region.edge_ids));
+  const contestedEdges = new Set(throatRegions.flatMap(region => region.contested_edge_ids));
   preview.edges.forEach(edge => {
     if (!nodeById.has(edge.node0) || !nodeById.has(edge.node1)) return;
     S('path', {
       d: pathForEdge(edge), fill: 'none', stroke: '#83a9bd', 'stroke-width': 1.4,
       'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none',
+      class: contestedEdges.has(edge.entity_id) ? 'throat-track-ambiguous' : throatEdges.has(edge.entity_id) ? 'throat-track-candidate' : '',
     }, '', $trackLayer);
   });
   const bridgeCrossings = preview.grade_separated_crossings || window.RailBridgeCrossings.detect(preview.edges, nodeById);
@@ -271,6 +275,15 @@ window.RAIL_MAP_APP_LOADED = true;
       'vector-effect': 'non-scaling-stroke', 'pointer-events': 'none',
     }, '', $switchLayer);
   });
+  const throatPorts = new Map(throatRegions.flatMap(region => region.ports).map(port => [port.node_id, port]));
+  throatPorts.forEach(port => {
+    if (!nodeById.has(port.node_id)) return;
+    const point = P(port.position);
+    const marker = S('circle', {cx: point.x, cy: point.y, r: 5, class: 'throat-boundary-port'}, '', $labelLayer);
+    S('title', {}, `咽喉候选边界 · 节点 ${port.node_id} · ${port.kind === 'PLATFORM_INTERFACE' ? '站台侧' : '外部连接待核验'}`, marker);
+  });
+  if (throatRegions.length) S('text', {x: 20, y: 25, id: 'station-throat-legend', class: 'throat-legend'},
+    `咽喉候选 ${throatRegions.length} 处 · 青色：候选轨道 · 橙色：归属争议 · 圆圈：边界（当前视窗内）`);
   [preview.station].forEach(station => {
     const point = P(station.center);
     const selected = station.entity_id === stationId;

@@ -3,6 +3,7 @@
 -- but each section is collected and serialized in a separate game update.  A
 -- previous all-in-one callback caused a native TPF2 crash on a large save.
 local common = require "tpf2_mcp/collectors/common"
+local config = require "tpf2_mcp/config"
 local signal_direction = require "tpf2_mcp/collectors/signal_direction"
 local signal_state = require "tpf2_mcp/collectors/signal_state"
 local known_signal_ids, signal_inventory_at = {}, nil
@@ -11,6 +12,16 @@ local collection_session_id = tostring(os.time()) .. "-" .. tostring({}):gsub("[
 
 local M = {}
 function M.session_id() return collection_session_id end
+function M.export_reload_state()
+    return { version = 1, session_id = collection_session_id,
+        known_signal_ids = known_signal_ids, signal_inventory_at = signal_inventory_at }
+end
+function M.import_reload_state(value)
+    assert(type(value) == "table" and value.version == 1 and type(value.session_id) == "string",
+        "incompatible telemetry session")
+    collection_session_id = value.session_id
+    known_signal_ids, signal_inventory_at = value.known_signal_ids, value.signal_inventory_at
+end
 
 local COMPONENTS = {
     "SIGNAL", "SIGNAL_LIST", "BASE_EDGE", "BASE_EDGE_TRACK", "BASE_NODE", "TRANSPORT_VEHICLE",
@@ -28,7 +39,8 @@ local PATH_EDGE_FIELDS = { "entity", "edge", "edgeId", "id", "dir", "direction",
 
 local function entity_id(value)
     if value == nil then return nil end
-    return tonumber(tostring(value)) or (type(value) == "number" and value or nil)
+    if type(value) == "number" then return value end
+    return tonumber(tostring(value))
 end
 
 local function vec(value)
@@ -50,6 +62,25 @@ local function bounds_for(entity, errors)
         y = (minimum.y + maximum.y) / 2,
         z = (minimum.z + maximum.z) / 2,
     }, { min = minimum, max = maximum }
+end
+
+-- Position frames only need a center, not copies of min/max plus a bbox table.
+local function coordinates(value)
+    local x, y = common.field(value, "x"), common.field(value, "y")
+    if type(x) ~= "number" or type(y) ~= "number" then return nil end
+    local z = common.field(value, "z")
+    return x, y, type(z) == "number" and z or 0
+end
+
+local function center_for(entity, errors)
+    local volume = common.safe_get_component(entity, "BOUNDING_VOLUME", errors)
+    local bbox = common.field(volume, "bbox")
+    local x0, y0, z0 = coordinates(common.field(bbox, "min"))
+    if x0 == nil then x0, y0, z0 = coordinates(common.field(bbox, "bbMin")) end
+    local x1, y1, z1 = coordinates(common.field(bbox, "max"))
+    if x1 == nil then x1, y1, z1 = coordinates(common.field(bbox, "bbMax")) end
+    if x0 == nil or x1 == nil then return nil end
+    return { x = (x0 + x1) / 2, y = (y0 + y1) / 2, z = (z0 + z1) / 2 }
 end
 
 local function model_name(model_id)
@@ -345,12 +376,16 @@ local function collect_live_vehicles(errors)
     return result
 end
 
--- Small position-only frame intended for the 5 Hz browser map feed. Complete
+-- Small position-only frame for consumers that do not need complete paths. Complete
 -- MOVE_PATH arrays stay in vehicles_live because serializing them takes longer
 -- than the requested reporting interval on a large save.
 local function collect_vehicle_positions(errors)
     local result = {}
+    local maximum = tonumber(config.vehicle_position_max_count) or 2048
+    maximum = math.max(1, math.min(2048, math.floor(maximum)))
+    local truncated = false
     local ok, reason = common.safe_for_each_entity("TRANSPORT_VEHICLE", function(entity)
+        if #result >= maximum then truncated = true; return end
         local vehicle = common.safe_get_component(entity, "TRANSPORT_VEHICLE", errors)
         local move_path = common.safe_get_component(entity, "MOVE_PATH", errors)
         local path = common.field(move_path, "path")
@@ -374,7 +409,7 @@ local function collect_vehicle_positions(errors)
             stop_index = common.field(vehicle, "stopIndex"),
             arrival_station_index = common.field(arrival_terminal, "station"),
             arrival_terminal_index = common.field(arrival_terminal, "terminal"),
-            position = bounds_for(entity, errors),
+            position = center_for(entity, errors),
             current_edge_id = entity_id(raw_edge_id),
             current_edge_index = type(edge_index) == "number" and edge_index or nil,
             current_edge_direction = direction,
@@ -386,11 +421,11 @@ local function collect_vehicle_positions(errors)
     end, errors)
     if not ok then errors[#errors + 1] = { component = "TRANSPORT_VEHICLE.position", error = tostring(reason) } end
     table.sort(result, function(a, b) return a.entity_id < b.entity_id end)
-    return result
+    return result, truncated, maximum
 end
 
--- A 1 Hz frame containing only physical train bodies.  This is deliberately
--- separate from the 5 Hz head positions and the large route/detail frame.
+-- A 5 Hz frame containing only physical train bodies.  This is deliberately
+-- separate from the large route/detail frame.
 -- It is fresh enough for two-sample tail-clear proof without serializing every
 -- train's complete MOVE_PATH once per game update.
 local function collect_train_footprints(errors)
@@ -403,14 +438,17 @@ local function collect_train_footprints(errors)
         local dyn = common.field(move_path, "dyn") or common.field(move_path, "dyn0")
         local path_pos = common.field(dyn, "pathPos")
         local edge_index = common.field(path_pos, "edgeIndex")
-        local edges = common.sequence_values(common.field(path, "edges"))
+        local edges = common.field(path, "edges")
+        local count, base = common.sequence_layout(edges)
         local route = { start_index = nil, current_index = edge_index, edge_ids = {}, directions = {}, transport_indices = {} }
         if type(edge_index) == "number" then
-            local first = math.max(1, edge_index + 1 - 96)
-            local last = math.min(#edges, edge_index + 1 + 96)
-            route.start_index = first - 1
+            local first = math.max(0, edge_index - 96)
+            local last = math.min(count - 1, edge_index + 96)
+            route.start_index = first
             for i = first, last do
-                local path_edge = edges[i]
+                local path_edge = common.field(edges, base + i)
+                -- A hole cannot be compacted: that would change path occurrence IDs.
+                if path_edge == nil then error("missing path edge at index " .. tostring(i)) end
                 local edge_id_value = common.field(path_edge, "edgeId")
                 local raw_id = common.field(edge_id_value, "entity") or common.field(edge_id_value, "edge") or common.field(edge_id_value, "id") or edge_id_value
                 route.edge_ids[#route.edge_ids + 1] = entity_id(raw_id)
@@ -536,9 +574,10 @@ function M.collect(section)
     elseif section == "vehicle_positions" then
         result.probe_kind = "OPERATIONAL_VEHICLE_POSITION_FRAME"
         result.source_status = "ENGINE_OBSERVED_DYNAMIC"
-        result.vehicles = collect_vehicle_positions(errors)
+        local truncated, maximum
+        result.vehicles, truncated, maximum = collect_vehicle_positions(errors)
         result.simulation_clock = collect_simulation_clock(errors)
-        result.counts = { vehicles = #result.vehicles }
+        result.counts = { vehicles = #result.vehicles, maximum = maximum, truncated = truncated }
     elseif section == "train_footprints" then
         result.probe_kind = "OPERATIONAL_TRAIN_FOOTPRINT_FRAME"
         result.source_status = "ENGINE_OBSERVED_DYNAMIC"

@@ -60,6 +60,7 @@ foreach ($required in @(
     $modBrowserImageSource,
     (Join-Path $companionSource 'requirements.txt'),
     (Join-Path $companionSource 'start_server.py'),
+    (Join-Path $companionSource 'start_http_server.py'),
     (Join-Path $companionSource 'start_ui.py'),
     (Join-Path $companionSource 'start_api.py'),
     (Join-Path $companionSource 'src'),
@@ -110,7 +111,7 @@ Copy-Item -LiteralPath (Join-Path $modSource 'res') -Destination $destination -R
 
 $companionDestination = Join-Path $destination 'mcp_server'
 New-Item -ItemType Directory -Force -Path $companionDestination | Out-Null
-foreach ($fileName in @('pyproject.toml', 'requirements.txt', 'start_server.py', 'start_ui.py', 'start_api.py')) {
+foreach ($fileName in @('pyproject.toml', 'requirements.txt', 'start_server.py', 'start_http_server.py', 'start_ui.py', 'start_api.py')) {
     Copy-Item -LiteralPath (Join-Path $companionSource $fileName) -Destination $companionDestination
 }
 $packageSource = Join-Path $companionSource 'src'
@@ -137,7 +138,7 @@ foreach ($directoryName in @('public', 'src')) {
 }
 $toolDestination = Join-Path $destination 'tools'
 New-Item -ItemType Directory -Force -Path $toolDestination | Out-Null
-foreach ($fileName in @('serve-rail-map.py', 'start-web.ps1', 'export-rail-network-map.py', 'export-dispatch-regions.py', 'run-regional-dispatch.py', 'collect-regional-inputs.py')) {
+foreach ($fileName in @('serve-rail-map.py', 'start-web.ps1', 'export-rail-network-map.py', 'export-dispatch-regions.py', 'run-regional-dispatch.py', 'collect-regional-inputs.py', 'hot-reload-telemetry.py')) {
     Copy-Item -LiteralPath (Join-Path $repository "tools\$fileName") -Destination $toolDestination
 }
 foreach ($fileName in @('control-system.py', 'control-system-acceptance.py', 'configure-capacity-routing.py', 'configure-speed-zone.py', 'configure-station-assignment.py')) {

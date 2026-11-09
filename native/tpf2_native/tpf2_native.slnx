@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+  </Configurations>
+  <Project Path="tpf2_controller/tpf2_controller.vcxproj" Id="e14040a8-e4d3-4758-9359-8601c088ed9c" />
+  <Project Path="tpf2_loader/tpf2_loader.vcxproj" Id="26ffa081-c3d9-4d50-b8bf-ba231dab3381" />
+</Solution>

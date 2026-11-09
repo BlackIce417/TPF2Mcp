@@ -4,6 +4,11 @@ import '../../shared/control-ui.js';
 import '../../shared/template-runtime.js';
 import './bridge-crossings.js';
 import {getJson} from '../../shared/http.js';
+import {bindRailRefresh} from '../../shared/rail-refresh.js';
+bindRailRefresh(document.getElementById('rail-network-refresh'),{
+  onComplete:()=>location.reload(),
+  onStatus:text=>{const notice=document.getElementById('map-notice');notice.textContent=text;notice.hidden=false;notice.classList.add('visible');},
+});
 
 try {
   window.RAIL_NETWORK_DATA = await getJson('/api/rail/manifest', {attempts: 3});

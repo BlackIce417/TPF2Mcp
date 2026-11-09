@@ -763,3 +763,7 @@ footer {
 #system-clock { font-size: 12px; color: #b7c9da; font-variant-numeric: tabular-nums; }
 
 nav button[data-nav] { cursor: pointer; }
+.throat-track-candidate { stroke: #46d9cc; stroke-width: 2.5; }
+.throat-track-ambiguous { stroke: #ff9944; stroke-width: 3; }
+.throat-boundary-port { fill: none; stroke: #46d9cc; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.throat-legend { fill: #b9e9e4; font-size: 12px; }

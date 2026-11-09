@@ -27,9 +27,16 @@ M.path_resolution = M.mod_dir and "MODULE_SOURCE" or "UNAVAILABLE"
 M.schema_version = 1
 M.snapshot_schema_version = 5
 M.snapshot_refresh_interval_seconds = 2
--- Publish the lightweight train-position frame independently of Bridge
--- commands so the map can follow moving trains without mailbox round trips.
+-- Compatibility setting expressed in NOMINAL 200 ms simulation updates.
+-- This is not a wall-clock rate: actual callback timing depends on the engine.
+-- For explicit throttling set vehicle_telemetry_report_interval_updates (0=off).
 M.vehicle_telemetry_report_interval_seconds = 0.2
+M.vehicle_position_max_count = 2048
+M.train_footprint_report_interval_updates = 1
+M.train_binary_report_interval_updates = 1
+-- Display names change rarely and stay outside the 5 Hz fixed binary frame.
+M.train_identity_report_interval_updates = 25
+M.signal_state_report_interval_updates = 5
 -- Game-script update callbacks can be much more frequent than Bridge work.
 M.bridge_poll_interval_updates = 5
 -- Phase 11 safety boundary: writes are off unless a dedicated test save

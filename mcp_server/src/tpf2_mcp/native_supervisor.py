@@ -1,16 +1,15 @@
-"""Version-checked lifecycle supervisor for the optional Windows native helper."""
+"""Observe the Loader-owned native Controller lifecycle without injecting DLLs."""
 from __future__ import annotations
 
 import ctypes
-import hashlib
 import os
-import subprocess
 from ctypes import wintypes
 from pathlib import Path
 from typing import Any
 
+from .native_ipc import read_status
 
-EXPECTED_GAME_SHA256 = "782b904a8f7bbdac1f7a18528f1a5c778691e5aa3087c37c351bf6912585175c"
+
 TH32CS_SNAPPROCESS = 0x00000002
 TH32CS_SNAPMODULE = 0x00000008
 TH32CS_SNAPMODULE32 = 0x00000010
@@ -103,9 +102,8 @@ class NativeSupervisor:
         self.native = self.mod_root / "native"
         self.dll = self.native / "tpf2_control.dll"
         self.next_dll = self.native / "tpf2_control.next.dll"
-        self.injector = self.native / "tpf2_control_injector.exe"
 
-    def reconcile(self, allow_inject: bool = False) -> dict[str, Any]:
+    def reconcile(self) -> dict[str, Any]:
         process = find_game_process()
         if process is None:
             updated = False
@@ -118,21 +116,14 @@ class NativeSupervisor:
         process_id, executable = process
         modules = loaded_modules(process_id)
         loaded = next((path for path in modules if path.name.lower() == self.dll.name.lower()), None)
+        loader = next((path for path in modules if path.name.lower() == "tpf2_loader.dll"), None)
         result = {"process_id": process_id, "game_executable": str(executable),
-                  "native_update_pending": self.next_dll.is_file(), "loaded_module": str(loaded) if loaded else None}
+                  "native_update_pending": self.next_dll.is_file(),
+                  "loader_module": str(loader) if loader else None,
+                  "loaded_module": str(loaded) if loaded else None}
         if loaded:
-            return {**result, "supervisor_state": "LOADED"}
-        if not allow_inject:
-            return {**result, "supervisor_state": "NOT_LOADED"}
-        if not self.dll.is_file() or not self.injector.is_file():
-            return {**result, "supervisor_state": "INJECTION_BLOCKED", "reason": "NATIVE_RUNTIME_MISSING"}
-        actual = hashlib.sha256(executable.read_bytes()).hexdigest()
-        if actual != EXPECTED_GAME_SHA256:
-            return {**result, "supervisor_state": "INJECTION_BLOCKED", "reason": "GAME_SHA256_MISMATCH",
-                    "actual_sha256": actual}
-        completed = subprocess.run([str(self.injector), str(process_id), str(self.dll)], capture_output=True,
-                                   text=True, timeout=15, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        loaded = next((path for path in loaded_modules(process_id) if path.name.lower() == self.dll.name.lower()), None)
-        return {**result, "supervisor_state": "LOADED" if completed.returncode == 0 and loaded else "INJECTION_FAILED",
-                "loaded_module": str(loaded) if loaded else None, "injector_exit_code": completed.returncode,
-                "injector_output": (completed.stdout + completed.stderr).strip()[-1000:]}
+            return {**result, **read_status(), "supervisor_state": "LOADED"}
+        if not self.dll.is_file():
+            return {**result, "supervisor_state": "NOT_LOADED", "reason": "CONTROLLER_FILE_MISSING"}
+        return {**result, "supervisor_state": "NOT_LOADED",
+                "reason": "LOADER_DID_NOT_LOAD_CONTROLLER" if loader else "LOADER_NOT_LOADED"}

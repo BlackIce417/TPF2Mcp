@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TPF2 · 咽喉识别</title><link rel="stylesheet" href="./styles/throats.css"></head>
+<body>
+<header><a href="/?view=network">← 站场图</a><h1>车站咽喉识别</h1><button id="throat-refresh">重新读取缓存</button></header>
+<p id="throat-status" role="status">正在读取识别结果…</p>
+<main>
+<aside id="throat-sidebar" class="app-sidebar app-sidebar-l">
+<label for="throat-station">车站</label><select id="throat-station"></select>
+<h2>识别区域</h2><div id="throat-regions"></div>
+<h2>识别依据</h2><p id="throat-evidence"></p><p id="throat-parameters"></p>
+<p>结果为拓扑候选，未验证合法进路。距离阈值可能拆开长咽喉，或纳入邻近线路所。</p>
+<a id="throat-local-link" href="/">查看普通站场图</a>
+</aside>
+<section id="throat-canvas-panel">
+<div id="throat-toolbar"><button id="throat-fit">全站</button><button id="throat-zoom-in">放大</button><button id="throat-zoom-out">缩小</button>
+<label><input id="throat-context" type="checkbox" checked>显示周边轨道</label></div>
+<div id="throat-legend"><span class="core-label">紫色：站台核心</span><span class="candidate-label">青色：咽喉候选</span><span class="ambiguous-label">橙色：争议</span><span>圆圈：边界；黄点：道岔</span></div>
+<svg id="throat-map" viewBox="0 0 1100 700" aria-label="车站核心与咽喉候选地图"></svg>
+<p id="throat-selection">点击轨道或边界查看详情；滚轮缩放，拖动平移。</p>
+</section></main>
+<template id="throat-region-template"><button class="region-choice" type="button"><strong data-field="name"></strong><span data-field="summary"></span></button></template>
+<script type="module" src="./pages/throats/entry.js"></script>
+</body></html>

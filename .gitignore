@@ -25,6 +25,8 @@ native/**/build/
 *.sqlite3
 
 # Large hand-off archives
+/tests/
+/logs/
 /*.zip
 
 # Generated save-specific railway exports live under var/rail-map/.

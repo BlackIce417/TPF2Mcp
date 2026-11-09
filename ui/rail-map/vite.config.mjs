@@ -45,6 +45,8 @@ export default defineConfig({
         local: resolve(SOURCE_ROOT, 'local.html'),
         timetable: resolve(SOURCE_ROOT, 'timetable.html'),
         regions: resolve(SOURCE_ROOT, 'regions.html'),
+        throats: resolve(SOURCE_ROOT, 'throats.html'),
+        junctions: resolve(SOURCE_ROOT, 'junctions.html'),
       },
     },
   },

@@ -1,2 +1,0 @@
-# FastAPI/Starlette in-process HTTP contract tests.
-httpx2>=2,<3

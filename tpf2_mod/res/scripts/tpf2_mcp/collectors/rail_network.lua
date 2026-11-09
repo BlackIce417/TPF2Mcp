@@ -106,7 +106,14 @@ local function collect_tracks(errors)
         local track_resource_detail = track_resource(track_type)
         local track_resource_file = type(track_resource_detail) == "table" and track_resource_detail.file_name or nil
         local lower_resource_file = type(track_resource_file) == "string" and string.lower(track_resource_file) or ""
+        local owner_ok, owner = pcall(function()
+            return api.engine.system.streetConnectorSystem.getConstructionEntityForEdge(edge_entity)
+        end)
+        local owner_id = owner_ok and entity_id(owner) or nil
+        if owner_id ~= nil and owner_id <= 0 then owner_id = nil end
         edges[#edges + 1] = {
+            construction_entity_id = owner_id,
+            construction_ownership_status = owner_ok and (owner_id and "OWNED" or "UNOWNED") or "UNAVAILABLE",
             entity_id = entity_id(edge_entity), node0 = id0, node1 = id1,
             tangent0 = vec(common.field(base, "tangent0")),
             tangent1 = vec(common.field(base, "tangent1")),

@@ -1,0 +1,19 @@
+LIBRARY "tpf2_loader"
+EXPORTS
+    luaopen_tpf2_loader
+    tpf2_loader_lua_start
+    tpf2_loader_lua_publish_json
+    tpf2_loader_lua_publish_binary
+    tpf2_loader_lua_network_refresh_due
+    tpf2_loader_abi_version
+    tpf2_loader_train_protocol_version
+    tpf2_loader_train_frame_header_size
+    tpf2_loader_train_wrapper_size
+    tpf2_loader_vehicle_part_wrapper_size
+    tpf2_loader_passenger_load_entry_size
+    tpf2_loader_freight_load_entry_size
+    tpf2_loader_start_controller
+    tpf2_loader_reload_controller
+    tpf2_loader_request_network_refresh
+    tpf2_loader_get_state
+    tpf2_loader_last_win32_error

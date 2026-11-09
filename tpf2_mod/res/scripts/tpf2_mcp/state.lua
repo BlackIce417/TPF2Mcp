@@ -152,6 +152,10 @@ function M.rail_network()
     return cached_rail_network
 end
 
+function M.invalidate_rail_network()
+    cached_rail_network = nil
+end
+
 function M.set_track_resources(entries)
     rail_network.set_track_resources(entries)
     cached_rail_network = nil

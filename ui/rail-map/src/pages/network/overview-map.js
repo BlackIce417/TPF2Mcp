@@ -743,7 +743,7 @@ window.renderRailNetwork = function renderRailNetwork() {
     mode.textContent=status.bridge_connected?'NETWORK CONTROL · LIVE':'NETWORK CONTROL · OFFLINE';
     document.querySelector('#snapshot').textContent=`${p.counts.stations} STATIONS / ${p.counts.lines} LINES · SEQ ${status.snapshot_sequence??'—'}`;
     const saveReady=!status.save_transition&&status.save_id&&status.rail_save_id===status.save_id;
-    const mapChanged=(status.rail_generation&&String(status.rail_generation)!==String(generation))||(p.save_id&&p.save_id!==status.save_id);
+    const mapChanged=!window.RAIL_REFRESH_PENDING&&((status.rail_generation&&String(status.rail_generation)!==String(generation))||(p.save_id&&p.save_id!==status.save_id));
     if(saveReady&&mapChanged&&!reloadRequested){
       reloadRequested=true;
       const target=new URL(location.href),nextGeneration=String(status.rail_generation||'');

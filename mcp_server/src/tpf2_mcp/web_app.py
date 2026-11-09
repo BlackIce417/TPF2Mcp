@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict
 
 from .bridge import BridgeError
 from .dispatch_regions import current_region_view
+from .junctions import ALGORITHM_VERSION as JUNCTION_ALGORITHM_VERSION
 
 
 TILE_KEY = re.compile(r"^[0-9]+_[0-9]+$")
@@ -94,12 +95,55 @@ def create_web_app(state: Any, *, manage_watcher: bool = False) -> FastAPI:
     def rail_manifest():
         return _json(state.read_json(state.root / "rail-network-manifest.json"))
 
+    @app.post('/api/rail/refresh')
+    def refresh_rail():
+        return _json(state.request_rail_refresh(), 202)
+
+    @app.get('/api/rail/refresh')
+    def rail_refresh_status():
+        return _json(state.rail_refresh_status())
+
     @app.get("/api/station-previews/{station_id}")
     def station_preview(station_id: str):
         if not station_id.isdigit():
             return _json({"error": "invalid station id"}, 400)
         value = state.read_json(state.root / "station-previews" / f"station-{station_id}.json")
         return _json(value, 200 if value else 404)
+
+    @app.get("/api/station-throats")
+    def station_throats_index():
+        value = state.read_json(state.root / "station-previews" / "manifest.json")
+        if value and value.get('save_id') != state.current_save_id():
+            return _json({'error': 'THROAT_SAVE_MISMATCH'}, 409)
+        return _json(value, 200 if value else 404)
+
+    def junction_cache():
+        value = state.read_json(state.root / 'junctions.json')
+        manifest = state.read_json(state.root / 'rail-network-manifest.json')
+        if not value:
+            return None, _json({'error': 'JUNCTION_CACHE_MISSING'}, 404)
+        if value.get('schema_version') != 1 or value.get('algorithm_version') != JUNCTION_ALGORITHM_VERSION:
+            return None, _json({'error': 'JUNCTION_VERSION_MISMATCH'}, 409)
+        if not value.get('save_id') or value['save_id'] != state.current_save_id() or value['save_id'] != manifest.get('save_id'):
+            return None, _json({'error': 'JUNCTION_SAVE_MISMATCH'}, 409)
+        if value.get('source_generation') != manifest.get('generated_at'):
+            return None, _json({'error': 'JUNCTION_GENERATION_MISMATCH'}, 409)
+        if manifest.get('junction_topology_id') and value.get('topology_id') != manifest['junction_topology_id']:
+            return None, _json({'error': 'JUNCTION_TOPOLOGY_MISMATCH'}, 409)
+        return value, None
+
+    @app.get('/api/junctions')
+    def junction_index():
+        value, error = junction_cache()
+        return error if error is not None else _json({k: v for k, v in value.items() if k != 'details'})
+
+    @app.get('/api/junctions/{junction_id}')
+    def junction_detail(junction_id: str):
+        value, error = junction_cache()
+        if error is not None: return error
+        detail = value['details'].get(junction_id)
+        if detail is None: return _json({'error': 'JUNCTION_NOT_FOUND'}, 404)
+        return _json({**detail, **{k: value[k] for k in ('save_id', 'topology_id', 'algorithm_version', 'source_generation', 'recognition_id')}})
 
     @app.get("/api/regional-status")
     def regional_status():

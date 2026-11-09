@@ -9,26 +9,57 @@ local function escape(value)
     return value:gsub("\\", "\\\\"):gsub('"', '\\"'):gsub("\n", "\\n"):gsub("\r", "\\r"):gsub("\t", "\\t")
 end
 
+-- One append-only buffer per message; cache repeated object keys only for
+-- this encoding. No persistent growth and no intermediate JSON per nested table.
 function M.encode(value)
-    local kind = type(value)
-    if value == nil then return "null" end
-    if kind == "boolean" then return value and "true" or "false" end
-    if kind == "number" then return tostring(value) end
-    if kind == "string" then return '"' .. escape(value) .. '"' end
-    if kind ~= "table" then error("unsupported JSON type: " .. kind) end
-    local marker = getmetatable(value)
-    local is_array, length = marker == nil or marker.__json_kind ~= "object", 0
-    for key, _ in pairs(value) do
-        if type(key) ~= "number" or key < 1 or key % 1 ~= 0 then is_array = false break end
-        if key > length then length = key end
+    local out, keys, active = {}, {}, {}
+    local count = 0
+    local function append(token)
+        count = count + 1
+        out[count] = token
     end
-    local out = {}
-    if is_array then
-        for index = 1, length do out[#out + 1] = M.encode(value[index]) end
-        return "[" .. table.concat(out, ",") .. "]"
+    local encode
+    encode = function(item)
+        local kind = type(item)
+        if item == nil then append("null")
+        elseif kind == "boolean" then append(item and "true" or "false")
+        elseif kind == "number" then append(tostring(item))
+        elseif kind == "string" then append('"' .. escape(item) .. '"')
+        elseif kind == "table" then
+            if active[item] then error("cyclic JSON table") end
+            active[item] = true
+            local marker = getmetatable(item)
+            local is_array, length = marker == nil or marker.__json_kind ~= "object", 0
+            for key in pairs(item) do
+                if type(key) ~= "number" or key < 1 or key % 1 ~= 0 then is_array = false break end
+                if key > length then length = key end
+            end
+            if is_array then
+                append("[")
+                for index = 1, length do
+                    if index > 1 then append(",") end
+                    encode(item[index])
+                end
+                append("]")
+            else
+                append("{")
+                local first = true
+                for key, member in pairs(item) do
+                    if not first then append(",") end
+                    first = false
+                    local name = tostring(key)
+                    local token = keys[name]
+                    if token == nil then token = '"' .. escape(name) .. '":'; keys[name] = token end
+                    append(token)
+                    encode(member)
+                end
+                append("}")
+            end
+            active[item] = nil
+        else error("unsupported JSON type: " .. kind) end
     end
-    for key, item in pairs(value) do out[#out + 1] = M.encode(tostring(key)) .. ":" .. M.encode(item) end
-    return "{" .. table.concat(out, ",") .. "}"
+    encode(value)
+    return table.concat(out)
 end
 
 local function decoder(input)
