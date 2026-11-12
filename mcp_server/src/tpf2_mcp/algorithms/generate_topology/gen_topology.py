@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass, field
 import math
 from typing import Any
 
-from ...rail_topology import RailGraph
+from tpf2_mcp.algorithms.rail_topology import RailGraph
 
 class NodeType(str, Enum):
     STATION = "station"
@@ -77,7 +77,7 @@ def generate_topology(
     Signal objects require operational_signal_observed=True and edge_param.
     """
     if raw_network is None:
-        from ...loader_telemetry import read_json_channel
+        from tpf2_mcp.transport.loader_telemetry import read_json_channel
         raw_network = read_json_channel("rail-network.json")
         if raw_signals is None:
             try:
@@ -111,8 +111,8 @@ def generate_topology(
     if raw_signals is None:
         graph.warnings.append("SIGNAL_INVENTORY_UNAVAILABLE")
     else:
-        from ...dispatch_runtime.geometry import RailGraph as ProjectionGraph
-        from ...dispatch_runtime.boundaries import normalize_directional_signals
+        from tpf2_mcp.algorithms.dispatch_runtime.geometry import RailGraph as ProjectionGraph
+        from tpf2_mcp.algorithms.dispatch_runtime.boundaries import normalize_directional_signals
         projection_graph = ProjectionGraph(raw_network)
         recovered = {row['entity_id']: row for row in normalize_directional_signals(raw_signals, projection_graph)}
         recovered_bindings = recovered
@@ -248,6 +248,6 @@ def generate_topology(
         raise ValueError("topology compression did not cover every physical track segment")
     graph.warnings = sorted(set(graph.warnings))
     if collapse_stations:
-        from .station_topology_node import collapse_station_nodes
+        from tpf2_mcp.algorithms.generate_topology.station_topology_node import collapse_station_nodes
         return collapse_station_nodes(graph, raw_network)
     return graph

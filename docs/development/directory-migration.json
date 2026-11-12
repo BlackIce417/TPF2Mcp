@@ -1,0 +1,1803 @@
+{
+  "schema_version": 1,
+  "archive_is_git_ignored": true,
+  "archive_requires_no_runtime_imports": true,
+  "source_file_moves": [
+    {
+      "previous": "agents/ENGINEERED_CONTROL_SYSTEM_TODO.md",
+      "current": "old/plans/ENGINEERED_CONTROL_SYSTEM_TODO.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/INTELLIGENT_DISPATCH_ALGORITHM_TODO.md",
+      "current": "old/plans/INTELLIGENT_DISPATCH_ALGORITHM_TODO.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/OPERATIONS_TODO.md",
+      "current": "old/plans/OPERATIONS_TODO.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/TPF2 MCP Phase 1 实机验收与修复任务.md",
+      "current": "old/plans/TPF2 MCP Phase 1 实机验收与修复任务.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/TPF2 MCP Phase 10：Decision Support - What-If Planning 开发计划.md",
+      "current": "old/plans/TPF2 MCP Phase 10：Decision Support - What-If Planning 开发计划.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/TPF2 MCP Phase 11：Controlled Operations - 受控执行层开发计划.md",
+      "current": "old/plans/TPF2 MCP Phase 11：Controlled Operations - 受控执行层开发计划.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/TPF2 MCP Phase 12：Closed-Loop Task Orchestration 开发计划.md",
+      "current": "old/plans/TPF2 MCP Phase 12：Closed-Loop Task Orchestration 开发计划.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/TPF2 MCP Phase 13：Operational Expansion - 运营控制能力扩展开发计划.md",
+      "current": "old/plans/TPF2 MCP Phase 13：Operational Expansion - 运营控制能力扩展开发计划.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/TPF2 MCP Phase 14：Operational Control Completion & Line Management 开发计划.md",
+      "current": "old/plans/TPF2 MCP Phase 14：Operational Control Completion & Line Management 开发计划.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/TPF2 MCP Phase 15：Line Lifecycle & Scheduling Control 开发计划.md",
+      "current": "old/plans/TPF2 MCP Phase 15：Line Lifecycle & Scheduling Control 开发计划.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/TPF2 MCP Phase 16：Line Creation & Operational Configuration 开发计划.md",
+      "current": "old/plans/TPF2 MCP Phase 16：Line Creation & Operational Configuration 开发计划.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/TPF2 MCP Phase 17：Arbitrary Route Line Creation 开发计划.md",
+      "current": "old/plans/TPF2 MCP Phase 17：Arbitrary Route Line Creation 开发计划.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/TPF2 MCP Phase 2.1：Collector 完整性与 UTF-8 收尾.md",
+      "current": "old/plans/TPF2 MCP Phase 2.1：Collector 完整性与 UTF-8 收尾.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/TPF2 MCP Phase 2：World Snapshot 与核心 Collector 开发任务.md",
+      "current": "old/plans/TPF2 MCP Phase 2：World Snapshot 与核心 Collector 开发任务.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/TPF2 MCP Phase 3：交通网络语义与运营分析.md",
+      "current": "old/plans/TPF2 MCP Phase 3：交通网络语义与运营分析.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/TPF2 MCP Phase 4：运营指标、财务与产业流分析.md",
+      "current": "old/plans/TPF2 MCP Phase 4：运营指标、财务与产业流分析.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/TPF2 MCP Phase 5：UI 数据源映射与经济语义.md",
+      "current": "old/plans/TPF2 MCP Phase 5：UI 数据源映射与经济语义.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/TPF2 MCP Phase 6：UI 数据绑定与 game.interface 数据源研究.md",
+      "current": "old/plans/TPF2 MCP Phase 6：UI 数据绑定与 game.interface 数据源研究.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/TPF2 MCP Phase 7：动态运输状态与可解释经营诊断.md",
+      "current": "old/plans/TPF2 MCP Phase 7：动态运输状态与可解释经营诊断.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/TPF2 MCP Phase 8：运营诊断与解释层.md",
+      "current": "old/plans/TPF2 MCP Phase 8：运营诊断与解释层.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/TPF2 MCP Phase 9 开发计划.md",
+      "current": "old/plans/TPF2 MCP Phase 9 开发计划.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/TPF2_MCP_Final_Goal_Requirements.md",
+      "current": "old/plans/TPF2_MCP_Final_Goal_Requirements.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/TPF2_MCP_Phase18_Acceptance_and_Phase19_Plan.md",
+      "current": "old/plans/TPF2_MCP_Phase18_Acceptance_and_Phase19_Plan.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/TPF2_MCP_Phase18_Native_Stop_Construction_Plan.md",
+      "current": "old/plans/TPF2_MCP_Phase18_Native_Stop_Construction_Plan.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/TPF2_MCP_Phase19_Acceptance_and_Phase20_Plan.md",
+      "current": "old/plans/TPF2_MCP_Phase19_Acceptance_and_Phase20_Plan.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/TPF2_MCP_Phase20_Line_Management_Acceptance_Report.md",
+      "current": "old/plans/TPF2_MCP_Phase20_Line_Management_Acceptance_Report.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "agents/Transport Fever 2 MCP 模组开发实施计划.md",
+      "current": "old/plans/Transport Fever 2 MCP 模组开发实施计划.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "docs/CURRENT_CAPABILITIES.md",
+      "current": "docs/usage/CURRENT_CAPABILITIES.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/DISPATCH_ALGORITHM_THEORY.md",
+      "current": "docs/architecture/DISPATCH_ALGORITHM_THEORY.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/FINAL_GOAL_ACCEPTANCE.md",
+      "current": "old/docs/FINAL_GOAL_ACCEPTANCE.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "docs/JUNCTIONS.md",
+      "current": "docs/architecture/JUNCTIONS.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/NATIVE_ENGINE_RESEARCH.md",
+      "current": "docs/development/NATIVE_ENGINE_RESEARCH.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/PHASE10_DECISION_SUPPORT.md",
+      "current": "old/docs/PHASE10_DECISION_SUPPORT.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "docs/PHASE11_CONTROLLED_OPERATIONS.md",
+      "current": "old/docs/PHASE11_CONTROLLED_OPERATIONS.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "docs/PHASE12_CLOSED_LOOP_TASKS.md",
+      "current": "old/docs/PHASE12_CLOSED_LOOP_TASKS.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "docs/PHASE13_OPERATIONAL_EXPANSION.md",
+      "current": "old/docs/PHASE13_OPERATIONAL_EXPANSION.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "docs/PHASE14_LINE_MANAGEMENT.md",
+      "current": "old/docs/PHASE14_LINE_MANAGEMENT.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "docs/PHASE17_ARBITRARY_LINE_ROUTE.md",
+      "current": "old/docs/PHASE17_ARBITRARY_LINE_ROUTE.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "docs/PHASE18_NATIVE_STOP_CONSTRUCTION.md",
+      "current": "old/docs/PHASE18_NATIVE_STOP_CONSTRUCTION.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "docs/PHASE19_LINE_OPERATIONS.md",
+      "current": "old/docs/PHASE19_LINE_OPERATIONS.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "docs/PHASE20_VEHICLE_LIFECYCLE.md",
+      "current": "old/docs/PHASE20_VEHICLE_LIFECYCLE.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "docs/PHASE9_NETWORK_INTELLIGENCE.md",
+      "current": "old/docs/PHASE9_NETWORK_INTELLIGENCE.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "docs/PROJECT_PROGRESS.md",
+      "current": "old/docs/PROJECT_PROGRESS.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "docs/SIGNAL_OBSERVATIONS.md",
+      "current": "docs/development/SIGNAL_OBSERVATIONS.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/STATION_THROATS.md",
+      "current": "docs/architecture/STATION_THROATS.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/TIMETABLE.md",
+      "current": "docs/usage/TIMETABLE.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/agent-mcp-tools.md",
+      "current": "docs/usage/agent-mcp-tools.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/architecture.md",
+      "current": "docs/architecture/architecture.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/bridge.md",
+      "current": "docs/development/bridge.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/company-balance-ui-crosscheck.md",
+      "current": "docs/development/company-balance-ui-crosscheck.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/dispatch-boundary-anchors.md",
+      "current": "docs/architecture/dispatch-boundary-anchors.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/frontend-architecture.md",
+      "current": "docs/architecture/frontend-architecture.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/line-command-source-trace.md",
+      "current": "docs/development/line-command-source-trace.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/line-finance-source-trace.md",
+      "current": "docs/development/line-finance-source-trace.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/loader-command-protocol.md",
+      "current": "docs/development/loader-command-protocol.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/modular-dispatch-design.md",
+      "current": "docs/architecture/modular-dispatch-design.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/native-train-telemetry.md",
+      "current": "docs/architecture/native-train-telemetry.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/phase5-acceptance.md",
+      "current": "old/docs/phase5-acceptance.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "docs/phase6-acceptance.md",
+      "current": "old/docs/phase6-acceptance.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "docs/phase7-acceptance.md",
+      "current": "old/docs/phase7-acceptance.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "docs/phase8-acceptance.md",
+      "current": "old/docs/phase8-acceptance.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "docs/rail-dispatch-hold.md",
+      "current": "docs/usage/rail-dispatch-hold.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/rail-live-acceptance.md",
+      "current": "old/docs/rail-live-acceptance.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "docs/scheduling-source-map.md",
+      "current": "docs/development/scheduling-source-map.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/snapshot-schema-v2.md",
+      "current": "old/docs/snapshot-schema-v2.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "docs/snapshot-schema-v3.md",
+      "current": "old/docs/snapshot-schema-v3.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "docs/snapshot-schema-v4.md",
+      "current": "old/docs/snapshot-schema-v4.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "docs/snapshot-schema-v5.md",
+      "current": "old/docs/snapshot-schema-v5.md",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "docs/station-waiting-source-trace.md",
+      "current": "docs/development/station-waiting-source-trace.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/technical-reference.md",
+      "current": "docs/development/technical-reference.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/telemetry-hot-reload.md",
+      "current": "docs/development/telemetry-hot-reload.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/tpf2-api-notes.md",
+      "current": "docs/development/tpf2-api-notes.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/tpf2-entity-components.md",
+      "current": "docs/development/tpf2-entity-components.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/ui-binding-traces.md",
+      "current": "docs/development/ui-binding-traces.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/ui-data-source-map.md",
+      "current": "docs/development/ui-data-source-map.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/vehicle-load-source-trace.md",
+      "current": "docs/development/vehicle-load-source-trace.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "docs/workshop-dds-mipmap-repair.md",
+      "current": "docs/usage/workshop-dds-mipmap-repair.md",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/analytics/__init__.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/analytics/__init__.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/analytics/evidence.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/analytics/evidence.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/analytics/network_index.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/analytics/network_index.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/asset_cache.py",
+      "current": "mcp_server/src/tpf2_mcp/repositories/asset_cache.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/audit.py",
+      "current": "mcp_server/src/tpf2_mcp/common/audit.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/bridge.py",
+      "current": "mcp_server/src/tpf2_mcp/transport/bridge.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/capacity_allocator.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/capacity_allocator.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/cargo.py",
+      "current": "mcp_server/src/tpf2_mcp/services/cargo.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/cli.py",
+      "current": "mcp_server/src/tpf2_mcp/entrypoints/cli.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/config.py",
+      "current": "mcp_server/src/tpf2_mcp/common/config.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/congestion_advisor.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/congestion_advisor.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/control_system.py",
+      "current": "mcp_server/src/tpf2_mcp/services/control_system.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/demand_history.py",
+      "current": "mcp_server/src/tpf2_mcp/services/demand_history.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/demand_mcp.py",
+      "current": "mcp_server/src/tpf2_mcp/mcp/demand_mcp.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/dispatch.py",
+      "current": "mcp_server/src/tpf2_mcp/services/dispatch.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/dispatch_platform.py",
+      "current": "mcp_server/src/tpf2_mcp/services/dispatch_platform.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/dispatch_regions.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/dispatch_regions.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/dispatch_runtime/__init__.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/dispatch_runtime/__init__.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/dispatch_runtime/admission.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/dispatch_runtime/admission.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/dispatch_runtime/boundaries.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/dispatch_runtime/boundaries.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/dispatch_runtime/collector.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/dispatch_runtime/collector.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/dispatch_runtime/contracts.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/dispatch_runtime/contracts.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/dispatch_runtime/decision.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/dispatch_runtime/decision.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/dispatch_runtime/geometry.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/dispatch_runtime/geometry.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/dispatch_runtime/handover.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/dispatch_runtime/handover.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/dispatch_runtime/receiving.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/dispatch_runtime/receiving.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/dispatch_runtime/routing.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/dispatch_runtime/routing.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/dispatch_runtime/storage.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/dispatch_runtime/storage.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/dispatch_runtime/territory.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/dispatch_runtime/territory.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/dwell_optimizer.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/dwell_optimizer.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/fleet_policy.py",
+      "current": "mcp_server/src/tpf2_mcp/services/fleet_policy.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/graph.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/graph.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/http_server.py",
+      "current": "mcp_server/src/tpf2_mcp/entrypoints/http_server.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/infrastructure_speed.py",
+      "current": "mcp_server/src/tpf2_mcp/services/infrastructure_speed.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/journal.py",
+      "current": "mcp_server/src/tpf2_mcp/common/journal.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/junction_cache.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/junction_cache.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/junction_sites.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/junction_sites.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/junctions.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/junctions.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/line_routes.py",
+      "current": "mcp_server/src/tpf2_mcp/services/line_routes.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/lines/__init__.py",
+      "current": "mcp_server/src/tpf2_mcp/services/lines/__init__.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/lines/models.py",
+      "current": "mcp_server/src/tpf2_mcp/services/lines/models.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/lines/stop_resolver.py",
+      "current": "mcp_server/src/tpf2_mcp/services/lines/stop_resolver.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/loader_command_ipc.py",
+      "current": "mcp_server/src/tpf2_mcp/transport/loader_command_ipc.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/loader_telemetry.py",
+      "current": "mcp_server/src/tpf2_mcp/transport/loader_telemetry.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/lua_commands.py",
+      "current": "mcp_server/src/tpf2_mcp/transport/lua_commands.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/movement_mcp.py",
+      "current": "mcp_server/src/tpf2_mcp/mcp/movement_mcp.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/native_ipc.py",
+      "current": "mcp_server/src/tpf2_mcp/transport/native_ipc.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/native_supervisor.py",
+      "current": "mcp_server/src/tpf2_mcp/transport/native_supervisor.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/operations/__init__.py",
+      "current": "mcp_server/src/tpf2_mcp/services/operations/__init__.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/operations/capabilities.py",
+      "current": "mcp_server/src/tpf2_mcp/services/operations/capabilities.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/operations/controller.py",
+      "current": "mcp_server/src/tpf2_mcp/services/operations/controller.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/operations/diff.py",
+      "current": "old/python/operations_diff.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/operations/handlers/__init__.py",
+      "current": "mcp_server/src/tpf2_mcp/services/operations/handlers/__init__.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/operations/handlers/assign_vehicle.py",
+      "current": "mcp_server/src/tpf2_mcp/services/operations/handlers/assign_vehicle.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/operations/handlers/base.py",
+      "current": "mcp_server/src/tpf2_mcp/services/operations/handlers/base.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/operations/handlers/buy_vehicle.py",
+      "current": "mcp_server/src/tpf2_mcp/services/operations/handlers/buy_vehicle.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/operations/handlers/create_line.py",
+      "current": "mcp_server/src/tpf2_mcp/services/operations/handlers/create_line.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/operations/handlers/registry.py",
+      "current": "mcp_server/src/tpf2_mcp/services/operations/handlers/registry.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/operations/handlers/replace_vehicle_config.py",
+      "current": "mcp_server/src/tpf2_mcp/services/operations/handlers/replace_vehicle_config.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/operations/handlers/sell_vehicle.py",
+      "current": "mcp_server/src/tpf2_mcp/services/operations/handlers/sell_vehicle.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/operations/handlers/set_line_stop_policy.py",
+      "current": "mcp_server/src/tpf2_mcp/services/operations/handlers/set_line_stop_policy.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/operations/handlers/set_line_stops.py",
+      "current": "mcp_server/src/tpf2_mcp/services/operations/handlers/set_line_stops.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/operations/handlers/vehicle_departure.py",
+      "current": "mcp_server/src/tpf2_mcp/services/operations/handlers/vehicle_departure.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/operations/models.py",
+      "current": "mcp_server/src/tpf2_mcp/services/operations/models.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/overtake_planner.py",
+      "current": "old/python/overtake_planner.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/planning/__init__.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/planning/__init__.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/planning/decision_support.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/planning/decision_support.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/protocol.py",
+      "current": "mcp_server/src/tpf2_mcp/common/protocol.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/rail_crossings.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/rail_crossings.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/rail_live.py",
+      "current": "mcp_server/src/tpf2_mcp/web/rail_live.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/rail_topology.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/rail_topology.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/save_scope.py",
+      "current": "mcp_server/src/tpf2_mcp/repositories/save_scope.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/server.py",
+      "current": "mcp_server/src/tpf2_mcp/mcp/server.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/signal_observations.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/signal_observations.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/snapshot.py",
+      "current": "mcp_server/src/tpf2_mcp/repositories/snapshot.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/speed_control_probe.py",
+      "current": "mcp_server/src/tpf2_mcp/services/speed_control_probe.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/speed_zones.py",
+      "current": "mcp_server/src/tpf2_mcp/services/speed_zones.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/station_log.py",
+      "current": "mcp_server/src/tpf2_mcp/web/station_log.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/station_preview.py",
+      "current": "mcp_server/src/tpf2_mcp/web/station_preview.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/station_throats.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/station_throats.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/stop_control.py",
+      "current": "mcp_server/src/tpf2_mcp/services/stop_control.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/tasks/__init__.py",
+      "current": "mcp_server/src/tpf2_mcp/services/tasks/__init__.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/tasks/goals.py",
+      "current": "mcp_server/src/tpf2_mcp/services/tasks/goals.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/tasks/orchestrator.py",
+      "current": "mcp_server/src/tpf2_mcp/services/tasks/orchestrator.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/tasks/policy.py",
+      "current": "mcp_server/src/tpf2_mcp/services/tasks/policy.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/timetable_planner.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/timetable_planner.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/timetable_prediction.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/timetable_prediction.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/train_control.py",
+      "current": "mcp_server/src/tpf2_mcp/services/train_control.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/train_dispatch.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/train_dispatch.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/train_spacing.py",
+      "current": "mcp_server/src/tpf2_mcp/algorithms/train_spacing.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/vehicle_length.py",
+      "current": "mcp_server/src/tpf2_mcp/services/vehicle_length.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/web_app.py",
+      "current": "mcp_server/src/tpf2_mcp/web/web_app.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/web_state.py",
+      "current": "mcp_server/src/tpf2_mcp/web/web_state.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/web_store.py",
+      "current": "mcp_server/src/tpf2_mcp/web/web_store.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/work_log.py",
+      "current": "mcp_server/src/tpf2_mcp/common/work_log.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "mcp_server/src/tpf2_mcp/world_mcp.py",
+      "current": "mcp_server/src/tpf2_mcp/mcp/world_mcp.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_controller/detour.cpp",
+      "current": "native/tpf2_native/tpf2_controller/hooks/detour.cpp",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_controller/detour.h",
+      "current": "native/tpf2_native/tpf2_controller/hooks/detour.h",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_controller/loader_session.h",
+      "current": "native/tpf2_native/tpf2_controller/ipc/loader_session.h",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_controller/native_command_ipc.h",
+      "current": "native/tpf2_native/shared/native_command_ipc.h",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_controller/native_ipc.h",
+      "current": "native/tpf2_native/tpf2_controller/ipc/native_ipc.h",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_controller/native_telemetry.cpp",
+      "current": "native/tpf2_native/tpf2_controller/telemetry/native_telemetry.cpp",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_controller/native_telemetry.h",
+      "current": "native/tpf2_native/tpf2_controller/telemetry/native_telemetry.h",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_controller/speed_hook.asm",
+      "current": "native/tpf2_native/tpf2_controller/hooks/speed_hook.asm",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_controller/tpf2.cpp",
+      "current": "native/tpf2_native/tpf2_controller/control/tpf2.cpp",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_controller/tpf2.h",
+      "current": "native/tpf2_native/tpf2_controller/control/tpf2.h",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_controller/train_motion.cpp",
+      "current": "native/tpf2_native/tpf2_controller/control/train_motion.cpp",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_controller/train_motion.h",
+      "current": "native/tpf2_native/tpf2_controller/control/train_motion.h",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_controller/train_motion_math.h",
+      "current": "native/tpf2_native/tpf2_controller/control/train_motion_math.h",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_loader/command_bus.cpp",
+      "current": "native/tpf2_native/tpf2_loader/ipc/command_bus.cpp",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_loader/command_bus.h",
+      "current": "native/tpf2_native/tpf2_loader/ipc/command_bus.h",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_loader/loader_api.cpp",
+      "current": "native/tpf2_native/tpf2_loader/lua/loader_api.cpp",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_loader/loader_api.h",
+      "current": "native/tpf2_native/tpf2_loader/lua/loader_api.h",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_loader/loader_runtime.cpp",
+      "current": "native/tpf2_native/tpf2_loader/lifecycle/loader_runtime.cpp",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_loader/loader_runtime.h",
+      "current": "native/tpf2_native/tpf2_loader/lifecycle/loader_runtime.h",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_loader/lua_abi.cpp",
+      "current": "native/tpf2_native/tpf2_loader/lua/lua_abi.cpp",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_loader/lua_abi.h",
+      "current": "native/tpf2_native/tpf2_loader/lua/lua_abi.h",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_loader/native_telemetry_bridge.cpp",
+      "current": "native/tpf2_native/tpf2_loader/ipc/native_telemetry_bridge.cpp",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_loader/native_telemetry_bridge.h",
+      "current": "native/tpf2_native/shared/native_telemetry_bridge.h",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_loader/scheduler.cpp",
+      "current": "native/tpf2_native/tpf2_loader/lifecycle/scheduler.cpp",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_loader/scheduler.h",
+      "current": "native/tpf2_native/tpf2_loader/lifecycle/scheduler.h",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_loader/shared_bus.cpp",
+      "current": "native/tpf2_native/tpf2_loader/ipc/shared_bus.cpp",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_loader/shared_bus.h",
+      "current": "native/tpf2_native/tpf2_loader/ipc/shared_bus.h",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "native/tpf2_native/tpf2_loader/train_telemetry_protocol.h",
+      "current": "native/tpf2_native/shared/train_telemetry_protocol.h",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/analyze-operational-telemetry.py",
+      "current": "tools/diagnostics/analyze-operational-telemetry.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/apply-dwell-optimization.py",
+      "current": "tools/diagnostics/apply-dwell-optimization.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/apply-line-timetable.py",
+      "current": "tools/diagnostics/apply-line-timetable.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/audit-junctions.py",
+      "current": "tools/diagnostics/audit-junctions.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/audit-station-throats.py",
+      "current": "tools/diagnostics/audit-station-throats.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/build-line-timetable-plan.py",
+      "current": "tools/build/build-line-timetable-plan.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/build-native-mod.ps1",
+      "current": "tools/build/build-native-mod.ps1",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/build-phase10-evidence.ps1",
+      "current": "old/tools/build-phase10-evidence.ps1",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/build-phase9-evidence.ps1",
+      "current": "old/tools/build-phase9-evidence.ps1",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/build-release-package.py",
+      "current": "tools/build/build-release-package.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/build-workshop-package.ps1",
+      "current": "tools/build/build-workshop-package.ps1",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/capture-loader-assets.py",
+      "current": "tools/diagnostics/capture-loader-assets.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/collect-diagnostics.ps1",
+      "current": "tools/diagnostics/collect-diagnostics.ps1",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/collect-line-demand.py",
+      "current": "tools/diagnostics/collect-line-demand.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/collect-regional-inputs.py",
+      "current": "tools/diagnostics/collect-regional-inputs.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/configure-capacity-routing.py",
+      "current": "tools/diagnostics/configure-capacity-routing.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/configure-speed-zone.py",
+      "current": "tools/diagnostics/configure-speed-zone.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/configure-station-assignment.py",
+      "current": "tools/diagnostics/configure-station-assignment.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/control-system-acceptance.py",
+      "current": "tools/diagnostics/control-system-acceptance.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/control-system.py",
+      "current": "tools/diagnostics/control-system.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/export-dispatch-regions.py",
+      "current": "tools/visualization/export-dispatch-regions.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/export-physical-station-map.py",
+      "current": "tools/visualization/export-physical-station-map.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/export-rail-network-map.py",
+      "current": "tools/visualization/export-rail-network-map.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/export-static-station-map.py",
+      "current": "tools/visualization/export-static-station-map.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/generate-station-topology.py",
+      "current": "tools/diagnostics/generate-station-topology.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/hot-reload-telemetry.py",
+      "current": "tools/diagnostics/hot-reload-telemetry.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/ida-ecs-region-map.py",
+      "current": "old/tools/ida-ecs-region-map.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/ida-engine-probe.py",
+      "current": "old/tools/ida-engine-probe.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/ida-fix-signal-predicate-types.py",
+      "current": "old/tools/ida-fix-signal-predicate-types.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/ida-list-signal-region.py",
+      "current": "old/tools/ida-list-signal-region.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/ida-resolve-watch-rip.py",
+      "current": "old/tools/ida-resolve-watch-rip.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/ida-ripref-signal-system.py",
+      "current": "old/tools/ida-ripref-signal-system.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/ida-signal-candidate-disasm.py",
+      "current": "old/tools/ida-signal-candidate-disasm.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/ida-signal-component-refs.py",
+      "current": "old/tools/ida-signal-component-refs.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/ida-signal-setter-scan.py",
+      "current": "old/tools/ida-signal-setter-scan.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/ida-signal-state-stage2.py",
+      "current": "old/tools/ida-signal-state-stage2.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/ida-signal-state-trace.py",
+      "current": "old/tools/ida-signal-state-trace.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/ida-signal-stride-writer.py",
+      "current": "old/tools/ida-signal-stride-writer.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/ida-signal-system-xrefs.py",
+      "current": "old/tools/ida-signal-system-xrefs.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/ida-signal-write-scan.py",
+      "current": "old/tools/ida-signal-write-scan.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/ida-signal-write-stage4.py",
+      "current": "old/tools/ida-signal-write-stage4.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/index-tpf2-lua-sources.py",
+      "current": "tools/diagnostics/index-tpf2-lua-sources.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/install-mod.ps1",
+      "current": "tools/install/install-mod.ps1",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/operate-assign-vehicle.py",
+      "current": "tools/diagnostics/operate-assign-vehicle.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/operate-expand-line.py",
+      "current": "tools/diagnostics/operate-expand-line.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/operate-sell-vehicle.py",
+      "current": "tools/diagnostics/operate-sell-vehicle.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/plot-changsha-shenyang.py",
+      "current": "old/tools/plot-changsha-shenyang.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/plot-shenyang-station.py",
+      "current": "old/tools/plot-shenyang-station.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/plot-topology-cache.py",
+      "current": "tools/visualization/plot-topology-cache.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/prepare-engine-probe.py",
+      "current": "old/tools/prepare-engine-probe.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/probe-vehicle-speed-control.py",
+      "current": "tools/diagnostics/probe-vehicle-speed-control.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/propose-dispatch-regions.py",
+      "current": "tools/diagnostics/propose-dispatch-regions.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/record-and-optimize-dwell.py",
+      "current": "tools/diagnostics/record-and-optimize-dwell.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/replace-line-fleet.py",
+      "current": "tools/diagnostics/replace-line-fleet.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/run-operational-telemetry.py",
+      "current": "tools/diagnostics/run-operational-telemetry.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/run-regional-dispatch.py",
+      "current": "tools/diagnostics/run-regional-dispatch.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/run-topology-cache.py",
+      "current": "tools/diagnostics/run-topology-cache.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/serve-rail-map.py",
+      "current": "tools/web/serve-rail-map.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/signal-write-watch.c",
+      "current": "old/tools/signal-write-watch.c",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/start-web.ps1",
+      "current": "tools/web/start-web.ps1",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/test-dispatch-hold-live.py",
+      "current": "old/tools/test-dispatch-hold-live.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/test-dispatch-task-live.py",
+      "current": "old/tools/test-dispatch-task-live.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/test-final-planner-live.py",
+      "current": "old/tools/test-final-planner-live.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/test-final-task-gate-live.py",
+      "current": "old/tools/test-final-task-gate-live.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/test-live-bridge.ps1",
+      "current": "old/tools/test-live-bridge.ps1",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/test-live-mcp.ps1",
+      "current": "old/tools/test-live-mcp.ps1",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/test-phase11-live.py",
+      "current": "old/tools/test-phase11-live.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/test-phase12-live.py",
+      "current": "old/tools/test-phase12-live.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/test-phase13-assign-live.py",
+      "current": "old/tools/test-phase13-assign-live.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/test-phase13-buy-live.py",
+      "current": "old/tools/test-phase13-buy-live.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/test-phase20-configure-goal-live.py",
+      "current": "old/tools/test-phase20-configure-goal-live.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/test-phase20-scheduling-live.py",
+      "current": "old/tools/test-phase20-scheduling-live.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/test-phase20-sell-live.py",
+      "current": "old/tools/test-phase20-sell-live.py",
+      "category": "local_archive",
+      "reason": "historical phase/probe or no production entry references"
+    },
+    {
+      "previous": "tools/validate-live-junctions.py",
+      "current": "tools/diagnostics/validate-live-junctions.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/validate-snapshot.py",
+      "current": "tools/diagnostics/validate-snapshot.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/verify-network-semantics.py",
+      "current": "tools/diagnostics/verify-network-semantics.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/verify-release-package.py",
+      "current": "tools/diagnostics/verify-release-package.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/verify-ui-ground-truth.py",
+      "current": "tools/diagnostics/verify-ui-ground-truth.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tools/watch-operations-until.py",
+      "current": "tools/diagnostics/watch-operations-until.py",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tpf2_mod/res/scripts/tpf2_mcp/binary.lua",
+      "current": "tpf2_mod/res/scripts/tpf2_mcp/codecs/binary.lua",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tpf2_mod/res/scripts/tpf2_mcp/collectors/api_inventory.lua",
+      "current": "tpf2_mod/res/scripts/tpf2_mcp/collectors/probes/api_inventory.lua",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tpf2_mod/res/scripts/tpf2_mcp/collectors/context_probe.lua",
+      "current": "tpf2_mod/res/scripts/tpf2_mcp/collectors/probes/context_probe.lua",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tpf2_mod/res/scripts/tpf2_mcp/collectors/dynamic_probe.lua",
+      "current": "tpf2_mod/res/scripts/tpf2_mcp/collectors/probes/dynamic_probe.lua",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tpf2_mod/res/scripts/tpf2_mcp/collectors/line_creation_probe.lua",
+      "current": "tpf2_mod/res/scripts/tpf2_mcp/collectors/probes/line_creation_probe.lua",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tpf2_mod/res/scripts/tpf2_mcp/collectors/line_raw_probe.lua",
+      "current": "tpf2_mod/res/scripts/tpf2_mcp/collectors/probes/line_raw_probe.lua",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tpf2_mod/res/scripts/tpf2_mcp/collectors/operations_probe.lua",
+      "current": "tpf2_mod/res/scripts/tpf2_mcp/collectors/probes/operations_probe.lua",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tpf2_mod/res/scripts/tpf2_mcp/collectors/ui_source_probe.lua",
+      "current": "tpf2_mod/res/scripts/tpf2_mcp/collectors/probes/ui_source_probe.lua",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tpf2_mod/res/scripts/tpf2_mcp/collectors/vehicle_write_probe.lua",
+      "current": "tpf2_mod/res/scripts/tpf2_mcp/collectors/probes/vehicle_write_probe.lua",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tpf2_mod/res/scripts/tpf2_mcp/collectors/write_api_probe.lua",
+      "current": "tpf2_mod/res/scripts/tpf2_mcp/collectors/probes/write_api_probe.lua",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tpf2_mod/res/scripts/tpf2_mcp/config.lua",
+      "current": "tpf2_mod/res/scripts/tpf2_mcp/config/settings.lua",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tpf2_mod/res/scripts/tpf2_mcp/hot_reload.lua",
+      "current": "tpf2_mod/res/scripts/tpf2_mcp/runtime/hot_reload.lua",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tpf2_mod/res/scripts/tpf2_mcp/json.lua",
+      "current": "tpf2_mod/res/scripts/tpf2_mcp/codecs/json.lua",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tpf2_mod/res/scripts/tpf2_mcp/native_loader.lua",
+      "current": "tpf2_mod/res/scripts/tpf2_mcp/transport/native_loader.lua",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tpf2_mod/res/scripts/tpf2_mcp/runtime.lua",
+      "current": "tpf2_mod/res/scripts/tpf2_mcp/runtime/main.lua",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    },
+    {
+      "previous": "tpf2_mod/res/scripts/tpf2_mcp/state.lua",
+      "current": "tpf2_mod/res/scripts/tpf2_mcp/runtime/state.lua",
+      "category": "active_source",
+      "reason": "classified source; import/build/runtime references updated"
+    }
+  ],
+  "additional_splits": {
+    "mcp/server.py": [
+      "mcp/tool_definitions.py",
+      "mcp/legacy_adapter.py",
+      "entrypoints/stdio.py"
+    ],
+    "mcp/world_mcp.py": [
+      "repositories/world.py"
+    ],
+    "mcp/demand_mcp.py": [
+      "services/demand.py"
+    ],
+    "mcp/movement_mcp.py": [
+      "services/movement.py",
+      "common/contracts/movement.py"
+    ]
+  },
+  "canonical_native_solution": "native/tpf2_native/tpf2_native.slnx",
+  "build_output": ".tmp-build/native",
+  "tests_remain_ignored": true
+}

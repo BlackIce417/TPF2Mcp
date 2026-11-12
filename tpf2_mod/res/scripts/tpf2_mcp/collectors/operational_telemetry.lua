@@ -3,7 +3,7 @@
 -- but each section is collected and serialized in a separate game update.  A
 -- previous all-in-one callback caused a native TPF2 crash on a large save.
 local common = require "tpf2_mcp/collectors/common"
-local config = require "tpf2_mcp/config"
+local config = require "tpf2_mcp/config/settings"
 local signal_direction = require "tpf2_mcp/collectors/signal_direction"
 local signal_state = require "tpf2_mcp/collectors/signal_state"
 local known_signal_ids, signal_inventory_at = {}, nil

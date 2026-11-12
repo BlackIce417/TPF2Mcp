@@ -1,6 +1,6 @@
-﻿// dllmain.cpp : 定义 DLL 应用程序的入口点。
+// dllmain.cpp : 定义 DLL 应用程序的入口点。
 #include "pch.h"
-#include "tpf2.h"
+#include "control/tpf2.h"
 
 BOOL is_in_game() {
     return GetModuleHandleW(L"TransportFever2.exe") != nullptr;

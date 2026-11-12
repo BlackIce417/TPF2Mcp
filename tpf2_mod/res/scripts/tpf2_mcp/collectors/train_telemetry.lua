@@ -1,6 +1,6 @@
-local binary = require "tpf2_mcp/binary"
+local binary = require "tpf2_mcp/codecs/binary"
 local common = require "tpf2_mcp/collectors/common"
-local native_loader = require "tpf2_mcp/native_loader"
+local native_loader = require "tpf2_mcp/transport/native_loader"
 
 local M = {}
 local FRAME_MAGIC = 0x52545054

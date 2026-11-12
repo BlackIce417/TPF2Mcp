@@ -1,6 +1,6 @@
-﻿// dllmain.cpp : 定义 DLL 应用程序的入口点。
+// dllmain.cpp : 定义 DLL 应用程序的入口点。
 #include "pch.h"
-#include "loader_runtime.h"
+#include "lifecycle/loader_runtime.h"
 
 BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID)
 {

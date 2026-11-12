@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="源文件">
@@ -21,24 +21,24 @@
     <ClInclude Include="pch.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="loader_api.h">
-      <Filter>头文件</Filter>
+    <ClInclude Include="lua\loader_api.h">
+      <Filter>lua</Filter>
     </ClInclude>
-    <ClInclude Include="loader_runtime.h">
-      <Filter>头文件</Filter>
+    <ClInclude Include="lifecycle\loader_runtime.h">
+      <Filter>lifecycle</Filter>
     </ClInclude>
-    <ClInclude Include="lua_abi.h">
-      <Filter>头文件</Filter>
+    <ClInclude Include="lua\lua_abi.h">
+      <Filter>lua</Filter>
     </ClInclude>
-    <ClInclude Include="scheduler.h">
-      <Filter>头文件</Filter>
+    <ClInclude Include="lifecycle\scheduler.h">
+      <Filter>lifecycle</Filter>
     </ClInclude>
-    <ClInclude Include="shared_bus.h">
-      <Filter>头文件</Filter>
+    <ClInclude Include="ipc\shared_bus.h">
+      <Filter>ipc</Filter>
     </ClInclude>
-    <ClInclude Include="command_bus.h"><Filter>头文件</Filter></ClInclude>
-    <ClInclude Include="train_telemetry_protocol.h">
-      <Filter>头文件</Filter>
+    <ClInclude Include="ipc\command_bus.h"><Filter>ipc</Filter></ClInclude>
+    <ClInclude Include="..\shared\train_telemetry_protocol.h">
+      <Filter>shared</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -48,22 +48,22 @@
     <ClCompile Include="pch.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="loader_api.cpp">
-      <Filter>源文件</Filter>
+    <ClCompile Include="lua\loader_api.cpp">
+      <Filter>lua</Filter>
     </ClCompile>
-    <ClCompile Include="loader_runtime.cpp">
-      <Filter>源文件</Filter>
+    <ClCompile Include="lifecycle\loader_runtime.cpp">
+      <Filter>lifecycle</Filter>
     </ClCompile>
-    <ClCompile Include="lua_abi.cpp">
-      <Filter>源文件</Filter>
+    <ClCompile Include="lua\lua_abi.cpp">
+      <Filter>lua</Filter>
     </ClCompile>
-    <ClCompile Include="scheduler.cpp">
-      <Filter>源文件</Filter>
+    <ClCompile Include="lifecycle\scheduler.cpp">
+      <Filter>lifecycle</Filter>
     </ClCompile>
-    <ClCompile Include="shared_bus.cpp">
-      <Filter>源文件</Filter>
+    <ClCompile Include="ipc\shared_bus.cpp">
+      <Filter>ipc</Filter>
     </ClCompile>
-    <ClCompile Include="command_bus.cpp"><Filter>源文件</Filter></ClCompile>
+    <ClCompile Include="ipc\command_bus.cpp"><Filter>ipc</Filter></ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="tpf2_loader.def">
@@ -71,7 +71,14 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="native_telemetry_bridge.cpp"><Filter>源文件</Filter></ClCompile>
-    <ClInclude Include="native_telemetry_bridge.h"><Filter>头文件</Filter></ClInclude>
+    <ClCompile Include="ipc\native_telemetry_bridge.cpp"><Filter>ipc</Filter></ClCompile>
+    <ClInclude Include="..\shared\native_telemetry_bridge.h"><Filter>shared</Filter></ClInclude>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Filter Include="ipc"><UniqueIdentifier>{238dca20-f284-560f-b6e9-53c12ffc5a64}</UniqueIdentifier></Filter>
+    <Filter Include="lifecycle"><UniqueIdentifier>{0f39e948-1888-5ad1-9a33-97d02a3addbb}</UniqueIdentifier></Filter>
+    <Filter Include="lua"><UniqueIdentifier>{36e3c02b-1a80-5313-94f7-d2ab22a6b544}</UniqueIdentifier></Filter>
+    <Filter Include="shared"><UniqueIdentifier>{5c057d61-b50a-5d97-b294-9fc9a712c6f5}</UniqueIdentifier></Filter>
   </ItemGroup>
 </Project>

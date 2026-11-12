@@ -44,14 +44,17 @@ HTTP MCP 采用 Streamable HTTP，可供多个本机客户端连接同一个服�
 
 一次连续九小时的 MCP 运营过程：需求监控、编组约束校验、加车、停站时间调整和异常恢复。
 
+PS. 以上UI预览图为旧功能，暂时没有与新的MCP功能同步，强行启动可能会有问题，后续会修复的。
+
 ## 能做什么
 
-当前生产 MCP 暴露 **32 个工具**。数据和 Lua 命令回执读取 Loader 共享内存，限速与强制移动走 Controller；停站策略和官方停车、倒车命令走 Lua 执行器。
+当前生产 MCP 暴露 **35 个工具**。数据和 Lua 命令回执读取 Loader 共享内存，限速与强制移动走 Controller；停站策略和官方停车、倒车命令走 Lua 执行器。
 上方图片保留项目已有功能与历史实验展示，不代表其中每项能力均已迁入当前 MCP。
 
 | 工具 | 已实现功能 |
 | --- | --- |
 | `get_bridge_status` | 检查 Loader、Controller 命令通道和世界目录状态 |
+| `get_dispatch_rules` | 读取随 Mod 发布的 `skills/tpf2-dispatch/` 调度提示词和规则 |
 | `get_train_control_snapshot` | 全部列车或指定 `display_name` 的运行数据，可选单节车辆数据 |
 | `set_train_speed_limit` | 对列车前方路径窗口设置临时限速；速度为 0 时请求停车 |
 | `cancel_train_speed_limit` | 根据 `command_id` 撤销本 MCP 进程创建的规则 |
@@ -65,6 +68,7 @@ HTTP MCP 采用 Streamable HTTP，可供多个本机客户端连接同一个服�
 | `get_full_network_topology` | 车站（含咽喉区）、道岔、信号机及带长度的有向拓扑边 |
 | `get_train_routes` | 按 `line_id` 导出所属列车、停站顺序、主选/备选站台、装载模式、等待时间，以及各列车已采路径窗口的拓扑映射 |
 | `set_line_stop_policy` | 修改指定线路一次停站的装载方式及最小/最大等待时间 |
+| `add_line_stop_platform` / `remove_line_stop_platform` | 增删指定线路某次停站允许使用的站台，保留其他停站和策略 |
 | `hold_train_at_station` / `release_train_from_hold` | 对已经在站内等待的列车扣停/放行；扣停10–600秒后自动解除 |
 | `stop_train` / `resume_train` | 官方停车标志控制；临时停车5–120秒后自动解除 |
 | `reverse_train` / `get_train_direction` | 官方倒车操作与方向状态查询 |
@@ -84,7 +88,7 @@ HTTP MCP 采用 Streamable HTTP，可供多个本机客户端连接同一个服�
 线路配置和路径分别携带采样时间。实际轨道走向只覆盖已采窗口，未解析部分明确标记，
 `full_line_track_path_available=false` 表示尚不提供全线完整轨道路径。
 
-新增五个停站控制工具默认 `dry_run=true`，仅预览。实际执行需设置 `dry_run=false`，
+停站、站台和停车控制工具默认 `dry_run=true`，仅预览。实际执行需设置 `dry_run=false`，
 并提供 `confirmation="<工具名大写>:<command_id>"` 和 `reason`，同时通过 Mod 的写权限开关及操作白名单。
 停站配置使用 `line_id + stop_index`（从0起始）定位，装载模式为 `LOAD_IF_AVAILABLE`、`FULL_LOAD_ANY`、`FULL_LOAD_ALL`。
 列车控制使用 `display_name`，名称重复时补充 `vehicle_id`。所有命令回读确认，
@@ -98,7 +102,7 @@ Loader 校验后在游戏更新回调中交给 Lua 执行。回执从 `command-r
 列车遥测包括显示名称、所属线路、长度、当前速度、技术最高速度、轨道/命令限速、
 加速度、载客与货量、轨道边位置及前方路径摘要。采样目标为 5 Hz，实际频率取决于游戏更新回调。
 高频列车数据由 Controller 在引擎更新回调中直接采集，经 Loader 写入原有二进制和 JSON 通道；Lua 保留低频名称和按需静态资源采集。
-127列列车、2209节车体的测试存档中，原 Lua 三个高频阶段平均 CPU 耗时合计约523ms；迁移后原生采集加共享内存发布的墙钟耗时中位约31.3ms，20秒实测约4.94Hz。两项耗时使用不同计时口径，详见[原生遥测说明](docs/native-train-telemetry.md)。
+127列列车、2209节车体的测试存档中，原 Lua 三个高频阶段平均 CPU 耗时合计约523ms；迁移后原生采集加共享内存发布的墙钟耗时中位约31.3ms，20秒实测约4.94Hz。两项耗时使用不同计时口径，详见[原生遥测说明](docs/architecture/native-train-telemetry.md)。
 未验证的数值通常返回 `null`；二进制载荷计数沿用 v1 协议，无法确认的车厢旅客数以0配合未验证标志表示，不能当作已确认无人。部分产业类型等字段仍可能为 `UNKNOWN`。
 世界目录、路网和信号资产在存档加载后发布一次，后续按需刷新；采集或共享内存发布失败会退避重试。
 换档会生成新的会话标识并重建目录、路网和信号批次；Python拒绝跨会话数据及失败采集器的空结果，同会话静态资产不因年龄自动失效。
@@ -154,40 +158,46 @@ Python 使用 `ControllerCommandClient`，通过共享内存命令队列与内�
 控制记录保存在 MCP 进程内存中，重启后不恢复；活跃控制查询不是 Controller 的全量规则查询。
 Controller 到期后不再应用该规则，列车驶出指定路径范围也不再受该规则限制。
 
-## 调用日志
+## 调度命令日志
 
-每次 MCP 启动创建一个按启动时间命名的 UTF-8 JSONL 文件：
+实际发出调度命令时，写入按服务启动时间命名的 UTF-8 JSONL 文件：
 
 ```text
-logs/mcp/YYYY-MM-DD_HH-MM-SS_微秒.jsonl
+logs/dispatch/YYYY-MM-DD_HH-MM-SS_微秒.jsonl
 ```
 
-日志位于服务所属仓库或 Mod 根目录，记录启动信息、每次工具调用的开始、参数、完成状态、
-错误、耗时及控制回执。确认串和常见凭据字段会脱敏，完整遥测结果不会整份写入日志。
-HTTP 基础访问日志另外由 Uvicorn 输出；运行日志不纳入 Git。
+本文所有运行路径均相对于同一个 **Mod 安装根目录**，不相对于终端当前目录。
+日志记录实际发令的对象、动作、范围、原因、命令编号和回执状态。发令前记 `SUBMITTING`，随后关联结果；
+结果未知不代表已执行成功。只读查询、预览、前置校验拒绝及去重重试不会新增发令记录。
+原先的全量工具调用日志和 HTTP 逐请求访问日志暂时关闭；`logs/mcp/` 保留服务启动、运行和异常日志。
+确认串和常见凭据字段会脱敏，完整遥测结果不会整份写入日志。运行日志不纳入发布包或 Git。
+状态、命令记录和缓存统一存入 `var/`；完整目录表见[部署与运行路径](docs/usage/deployment.md)。
 
 ## 项目组成
 
 - `tpf2_mod/`：Transport Fever 2 Lua Mod 源码。
-- `mcp_server/`：Python HTTP/stdio MCP Server、共享内存解析与控制发送器；保留待迁移的旧模块。
+- `mcp_server/`：按入口、MCP、业务、通信、仓库、算法和 Web 分层的 Python 服务。
 - `native/tpf2_native/`：Visual Studio 解决方案及 `tpf2_loader`、`tpf2_controller` 两个 C++ 工程源码。
 - `ui/rail-map/`：独立 Vite 铁路调度图前端。
-- `tools/`：安装、测试、导出、打包和验收工具。
+- `tools/`：按 `build/`、`install/`、`web/`、`diagnostics/`、`visualization/` 分类的开发工具。
+- `old/`：本机历史归档，已被 Git 忽略，不参与启动和发布。
+
+详细目录职责、启动和构建入口见[工程目录约定](docs/architecture/project-layout.md)，文档索引见 [docs/README.md](docs/README.md)。
 
 ## 快速体验
 
 1. 在 Windows x64 游戏中启用含 Loader/Controller DLL 的 `tpf2mcp` Mod，并进入存档。
    原生 DLL 必须与当前游戏版本匹配。
-2. 当前新版 Python MCP 从源码仓库独立运行，使用 Python 3.11+。
-   从仓库根目录创建虚拟环境、安装依赖并启动：
+2. 完整 Mod 已包含 Python 服务、Lua、DLL、skill、前端源码、工具和文档，使用你自行准备的 Python 3.11+ 环境。
+   Python 依赖清单为 `mcp_server/requirements.txt`；本项目不安装或管理你的 Python 环境。
+   从 **Mod 安装根目录** 启动：
 
    ```powershell
-   python -m venv .venv
-   .\.venv\Scripts\python.exe -m pip install -r .\mcp_server\requirements.txt
-   .\.venv\Scripts\python.exe .\mcp_server\start_http_server.py
+   powershell -ExecutionPolicy Bypass -File .\start-mcp.ps1
    ```
 
-   如果使用 Conda 创建的 `.venv`，Python 通常位于 `.\.venv\python.exe`，按实际环境路径执行。
+   启动器使用当前环境的 `python`，可用 `-Python <python可执行文件>` 指定解释器。
+   也可直接执行 `python mcp_server/start_http_server.py`。
    客户端选择 **Streamable HTTP**，填写 `http://127.0.0.1:8766/mcp`。
    健康检查为 `http://127.0.0.1:8766/health`；游戏连接状态使用 `get_bridge_status` 核验。
    可用 `--port` 或 `TPF2_MCP_HTTP_PORT` 修改端口。接口变更后客户端应重新连接刷新工具定义。
@@ -197,19 +207,18 @@ HTTP 基础访问日志另外由 Uvicorn 输出；运行日志不纳入 Git。
    stdio 入口 `mcp_server/start_server.py` 仍保留，由客户端作为子进程启动。
    多客户端共享控制状态使用同一个 HTTP 服务。
 
-3. 铁路图属于独立开发组件，部分数据访问仍待迁移到新链路。
-   需要启动 Web API 时进入 `mcp_server/` 执行：
+3. 铁路图属于独立组件，部分数据访问仍待迁移到新链路。
+   需要启动 Web API 时，在同一个 Mod 根目录执行：
 
    ```powershell
-   python start_api.py
+   python mcp_server/start_api.py
    ```
 
 4. 另开终端启动前端：
 
    ```powershell
-   cd ..\ui\rail-map
-   npm install
-   npm run dev
+   npm --prefix ui/rail-map install
+   npm --prefix ui/rail-map run dev
    ```
 
 5. 浏览器打开 `http://127.0.0.1:5173/?view=network`。
@@ -217,18 +226,19 @@ HTTP 基础访问日志另外由 Uvicorn 输出；运行日志不纳入 Git。
 Mod 不会自动启动外部进程；MCP Server、FastAPI API 和前端需要单独启动。
 当前 MCP 限速使用命令编号、原因与显式确认串，不走隔离中的旧 Task 审批流程。
 
-## 原生构建与打包状态
+## 构建完整 Mod
 
 使用 Visual Studio C++ 工具链构建 `native/tpf2_native/tpf2_native.slnx`。
-原生 Mod 打包入口为：
+从源码根目录构建完整发布包：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\tools\build-native-mod.ps1 -NativeRoot .\native\tpf2_native
+powershell -ExecutionPolicy Bypass -File .\tools\build\build-workshop-package.ps1
 ```
 
-脚本生成以 `_数字` 结尾的 Mod 目录与原生包，默认目录名为 `tpf2_mcp_1`，不包含 Python/UI。
-当前新版 Python 服务尚未随本轮改动重新组装进 Mod。旧 `build-workshop-package.ps1`
-还保留旧原生构建引用，完整新版发布流程待整理。
+脚本生成一个完整的 `tpf2mcp_1/` Mod 目录及同级 `tpf2mcp_1-release.zip`。
+ZIP 第一层就是 Mod 文件夹，解压到游戏的 `mods/` 下即可。已有安装保留原目录名，以保持存档的 Mod 标识。
+完整包默认关闭写权限，不包含用户 Python 环境、node_modules、运行日志、缓存、本地权限配置或测试资料。
+`build-native-mod.ps1` 仅用于原生开发测试，不作为用户安装包。
 
 
 ## 当前状态

@@ -21,7 +21,8 @@ Vite 独立提供 HTML、CSS 和 JavaScript。详细规则见
 HTML 内禁止新增 `<style>`、`style` 属性、无 `src` 的 `<script>` 和 `onclick` 等内联事件。
 页面中需要调整文字或字段容器时改 HTML，需要调整外观时改对应 CSS，需要调整
 数据和行为时改对应 JS。铁路 JSON、瓦片和车站预览属于后端运行缓存，统一位于
-项目根目录 `var/rail-map/`，前端只能通过 `/api/*` 读取，不能直接引用这些文件。
+所属项目或完整 Mod 根目录的 `var/rail-map/`，前端只能通过 `/api/*` 读取，不能直接引用这些文件。
+发布部署的路径统一遵循 [完整 Mod 部署与运行路径](../../docs/usage/deployment.md)。
 
 新代码统一使用浏览器原生 ES Modules 和 DOM API，不再新增 jQuery 依赖。旧页面中的
 jQuery 在修改相应模块时逐步迁移。

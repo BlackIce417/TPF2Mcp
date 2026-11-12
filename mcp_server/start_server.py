@@ -8,7 +8,7 @@ from pathlib import Path
 
 SERVER_DIRECTORY = Path(__file__).resolve().parent
 MOD_DIRECTORY = SERVER_DIRECTORY.parent
-RUNTIME_MARKER = MOD_DIRECTORY / "res" / "scripts" / "tpf2_mcp" / "runtime.lua"
+RUNTIME_MARKER = MOD_DIRECTORY / "res" / "scripts" / "tpf2_mcp" / "runtime" / "main.lua"
 
 # Keep Workshop/manual Mod directories free of Python bytecode build artifacts.
 sys.dont_write_bytecode = True
@@ -20,7 +20,7 @@ if RUNTIME_MARKER.is_file():
 
 sys.path.insert(0, str(SERVER_DIRECTORY / "src"))
 
-from tpf2_mcp.server import main  # noqa: E402
+from tpf2_mcp.entrypoints.stdio import main  # noqa: E402
 
 
 if __name__ == "__main__":

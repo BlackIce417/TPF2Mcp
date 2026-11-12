@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from ...dispatch_runtime.geometry import RailGraph
+from tpf2_mcp.algorithms.dispatch_runtime.geometry import RailGraph
 
 
 DEFAULT_POLICY = {

@@ -3,7 +3,7 @@ import argparse
 import json
 from pathlib import Path
 
-from .controller import TrainSpacingController
+from tpf2_mcp.algorithms.train_spacing.controller import TrainSpacingController
 
 
 def main():

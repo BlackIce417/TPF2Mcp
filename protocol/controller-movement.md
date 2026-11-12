@@ -1,8 +1,8 @@
 # Controller 列车移动命令（实验接口）
 
 沿用 Controller V2 共享内存命令环，Python 统一通过
-`tpf2_mcp.native_ipc.ControllerCommandClient` 调用。MCP 适配层为
-`mcp_server/src/tpf2_mcp/movement_mcp.py`，通过 `server.py` 向 stdio 和 HTTP 同时导出。
+`tpf2_mcp.transport.native_ipc.ControllerCommandClient` 调用。MCP 适配层为
+`mcp_server/src/tpf2_mcp/mcp/movement_mcp.py`，通过 `server.py` 向 stdio 和 HTTP 同时导出。
 
 | 命令号 | 方法 | 行为 |
 | --- | --- | --- |

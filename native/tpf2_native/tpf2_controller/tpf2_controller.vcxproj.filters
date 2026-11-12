@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="源文件">
@@ -21,26 +21,26 @@
     <ClInclude Include="pch.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="detour.h">
-      <Filter>头文件</Filter>
+    <ClInclude Include="hooks\detour.h">
+      <Filter>hooks</Filter>
     </ClInclude>
-    <ClInclude Include="tpf2.h">
-      <Filter>头文件</Filter>
+    <ClInclude Include="control\tpf2.h">
+      <Filter>control</Filter>
     </ClInclude>
-    <ClInclude Include="native_ipc.h">
-      <Filter>头文件</Filter>
+    <ClInclude Include="ipc\native_ipc.h">
+      <Filter>ipc</Filter>
     </ClInclude>
-    <ClInclude Include="native_command_ipc.h">
-      <Filter>头文件</Filter>
+    <ClInclude Include="..\shared\native_command_ipc.h">
+      <Filter>shared</Filter>
     </ClInclude>
-    <ClInclude Include="train_motion.h">
-      <Filter>头文件</Filter>
+    <ClInclude Include="control\train_motion.h">
+      <Filter>control</Filter>
     </ClInclude>
-    <ClInclude Include="train_motion_math.h">
-      <Filter>头文件</Filter>
+    <ClInclude Include="control\train_motion_math.h">
+      <Filter>control</Filter>
     </ClInclude>
-    <ClInclude Include="loader_session.h">
-      <Filter>头文件</Filter>
+    <ClInclude Include="ipc\loader_session.h">
+      <Filter>ipc</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -50,23 +50,31 @@
     <ClCompile Include="pch.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="detour.cpp">
-      <Filter>源文件</Filter>
+    <ClCompile Include="hooks\detour.cpp">
+      <Filter>hooks</Filter>
     </ClCompile>
-    <ClCompile Include="tpf2.cpp">
-      <Filter>源文件</Filter>
+    <ClCompile Include="control\tpf2.cpp">
+      <Filter>control</Filter>
     </ClCompile>
-    <ClCompile Include="train_motion.cpp">
-      <Filter>源文件</Filter>
+    <ClCompile Include="control\train_motion.cpp">
+      <Filter>control</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="native_telemetry.cpp"><Filter>源文件</Filter></ClCompile>
-    <ClInclude Include="native_telemetry.h"><Filter>头文件</Filter></ClInclude>
+    <ClCompile Include="telemetry\native_telemetry.cpp"><Filter>telemetry</Filter></ClCompile>
+    <ClInclude Include="telemetry\native_telemetry.h"><Filter>telemetry</Filter></ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <MASM Include="speed_hook.asm">
-      <Filter>源文件</Filter>
+    <MASM Include="hooks\speed_hook.asm">
+      <Filter>hooks</Filter>
     </MASM>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Filter Include="control"><UniqueIdentifier>{5559e7d5-1275-5634-a2d9-b330d1b194a5}</UniqueIdentifier></Filter>
+    <Filter Include="hooks"><UniqueIdentifier>{52855a32-8c28-565e-b742-9aa6d8b4611a}</UniqueIdentifier></Filter>
+    <Filter Include="ipc"><UniqueIdentifier>{238dca20-f284-560f-b6e9-53c12ffc5a64}</UniqueIdentifier></Filter>
+    <Filter Include="shared"><UniqueIdentifier>{5c057d61-b50a-5d97-b294-9fc9a712c6f5}</UniqueIdentifier></Filter>
+    <Filter Include="telemetry"><UniqueIdentifier>{6f14d834-8ed9-5340-89d9-a65947229d36}</UniqueIdentifier></Filter>
   </ItemGroup>
 </Project>

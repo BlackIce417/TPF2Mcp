@@ -1,6 +1,6 @@
 -- Deliberately fail closed. A future ENGINE_VERIFIED implementation may add
 -- narrowly validated handlers here; arbitrary Lua is never accepted.
-local config = require "tpf2_mcp/config"
+local config = require "tpf2_mcp/config/settings"
 local stop_builder = require "tpf2_mcp/operations/line_stop_builder"
 local timetable = require "tpf2_mcp/operations/timetable_controller"
 local M = {}
@@ -142,6 +142,19 @@ function M.dispatch(command)
         if not command_ok or engine_command == nil then return reject("ENGINE_ERROR", tostring(engine_command)) end
         local send_ok, send_error = pcall(api.cmd.sendCommand, engine_command, function() end)
         if not send_ok then return reject("ENGINE_ERROR", tostring(send_error)) end
+        executed[command.operation_id] = true
+        return true, { accepted = true, engine_command_sent = true, code = "EXECUTED", operation_id = command.operation_id, line_id = target.line_id }
+    end
+    if operation_type == "ADD_LINE_STOP_PLATFORM" or operation_type == "REMOVE_LINE_STOP_PLATFORM" then
+        local target, parameters = command.target, command.parameters
+        if type(target) ~= "table" then return reject("INVALID_PARAMETERS", "line_id is required") end
+        local line, build_error = require("tpf2_mcp/operations/line_platforms").build(
+            target.line_id, parameters, operation_type == "REMOVE_LINE_STOP_PLATFORM")
+        if line == nil then return reject(build_error, "Unable to edit stop platforms") end
+        local ok, engine_command = pcall(api.cmd.make.updateLine, target.line_id, line)
+        if not ok or engine_command == nil then return reject("ENGINE_ERROR", tostring(engine_command)) end
+        local sent, send_error = pcall(api.cmd.sendCommand, engine_command, function() end)
+        if not sent then return reject("ENGINE_ERROR", tostring(send_error)) end
         executed[command.operation_id] = true
         return true, { accepted = true, engine_command_sent = true, code = "EXECUTED", operation_id = command.operation_id, line_id = target.line_id }
     end

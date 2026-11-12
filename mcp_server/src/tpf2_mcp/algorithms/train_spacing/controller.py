@@ -5,8 +5,8 @@ import math
 from copy import deepcopy
 from typing import Callable, Any
 
-from ...dispatch_runtime.geometry import RailGraph
-from .engine import DEFAULT_POLICY, compile_train_spacing
+from tpf2_mcp.algorithms.dispatch_runtime.geometry import RailGraph
+from tpf2_mcp.algorithms.train_spacing.engine import DEFAULT_POLICY, compile_train_spacing
 
 
 class TrainSpacingController:

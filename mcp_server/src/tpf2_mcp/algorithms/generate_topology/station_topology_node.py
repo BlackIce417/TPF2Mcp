@@ -9,7 +9,7 @@ import math
 from typing import Any
 from dataclasses import replace
 
-from .gen_topology import NetworkTopology, NodeType, generate_topology
+from tpf2_mcp.algorithms.generate_topology.gen_topology import NetworkTopology, NodeType, generate_topology
 
 DEFAULT_SIGNAL_SEARCH_M = 500.0
 
@@ -270,7 +270,7 @@ def collapse_station_nodes(topology: NetworkTopology, raw_network: dict[str, Any
     at the station boundary, excluding station traversal. The aggregate node
     does not prove that arbitrary ingress/egress port pairs are legal routes.
     """
-    from .gen_topology import Node
+    from tpf2_mcp.algorithms.generate_topology.gen_topology import Node
     wrappers = generate_station_topology_nodes(raw_network, topology=topology)
     _retain_exclusive_interiors(topology, wrappers)
     graph = NetworkTopology(warnings=list(topology.warnings))

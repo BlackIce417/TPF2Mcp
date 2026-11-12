@@ -75,7 +75,7 @@ Workshop 订阅 Mod 根目录：D:\Steam\steamapps\workshop\content\1066780\<wor
 - 前端数据流固定为 `FastAPI /api/* -> pages/*/api 或 shared/http.js -> JSON -> 页面/组件 JS -> 既有 HTML DOM`。新增或重构页面时优先降低动态 DOM 拼装和代码分散程度，使页面字段可以通过 DOM `id` 或 API 字段名直接定位。
 - 后端生成的路网 JSON、瓦片和车站预览统一放在项目或 Mod 根目录的 `var/rail-map/`，不得再写入 `ui/rail-map/`。浏览器只能通过 FastAPI `/api/*` 获取这些数据。
 - 调度区总览复用全局路网生成阶段的简化物理底图；轨道归属在 `dispatch_regions.py` 编译时合并为按区域着色的概览矢量链。放大后必须复用 `/api/rail/tile/*` 原始路网瓦片和 `ui/rail-map/src/shared/pixi-viewport.js`，按生成数据中的 edge 区间归属着色；不得从完整轨道曲线生成常驻覆盖层。拖动使用 `requestAnimationFrame` 合帧，不得在交互帧重建轨道几何。
-- Python 数据导出器只能生成 JSON，不得生成 `window.X = {...}` 形式的 JavaScript 数据包装器。详细规范见 `docs/frontend-architecture.md`。
+- Python 数据导出器只能生成 JSON，不得生成 `window.X = {...}` 形式的 JavaScript 数据包装器。详细规范见 `docs/architecture/frontend-architecture.md`。
 - 首次开发先创建仓库内 Conda 环境并安装前端依赖：
 
 ```powershell
@@ -86,7 +86,7 @@ npm --prefix .\ui\rail-map install
 - 日常开发推荐从仓库根目录一键启动 API 与前端；该脚本只管理自己创建的两个子进程：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\tools\start-web.ps1
+powershell -ExecutionPolicy Bypass -File .\tools\web\start-web.ps1
 ```
 
 - 默认访问 `http://127.0.0.1:5173/?view=network`，FastAPI 文档位于 `http://127.0.0.1:8765/api/docs`。若端口已被旧进程占用，启动脚本必须报出 PID，不得擅自终止用户已有进程。
@@ -101,7 +101,7 @@ npm --prefix .\ui\rail-map run dev
 
 - GitHub 仓库是源码仓库，不得为了匹配创意工坊目录而把仓库整体改造成 `tpf2mcp_1`。
 - 保持职责分离：`tpf2_mod/` 存放 Lua Mod 源码与发布图片，`mcp_server/` 存放 Python 服务，`ui/` 存放前端源码，`tools/` 存放开发和构建工具，`protocol/`、`tests/`、`docs/` 分别存放协议、测试和文档。
-- 创意工坊目录 `tpf2mcp_1/` 是从源码组装出的发布产物，只能由 `tools/build-workshop-package.ps1` 生成；不要把暂存目录中的文件反向复制回源码目录。
+- 创意工坊目录 `tpf2mcp_1/` 是从源码组装出的发布产物，只能由 `tools/build/build-workshop-package.ps1` 生成；不要把暂存目录中的文件反向复制回源码目录。
 - `tpf2_mod/image_00.tga` 和 `tpf2_mod/workshop_preview.jpg` 是发布资源，应纳入 Git。前者必须是 320×180、24 位、未压缩 TGA；后者必须为正方形且小于 1 MiB。
 - `mcp_server/requirements.txt`、`start_server.py`、`start_api.py`、兼容入口 `start_ui.py` 以及发布构建脚本属于源码，应纳入 Git。
 
@@ -119,7 +119,7 @@ npm --prefix .\ui\rail-map run dev
 - 使用以下脚本生成 Steam 暂存目录，优先让脚本自动发现 `staging_area`；发现失败时再显式传入路径：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\tools\build-workshop-package.ps1
+powershell -ExecutionPolicy Bypass -File .\tools\build\build-workshop-package.ps1
 ```
 
 - 构建目标已存在时，脚本应停止而不是覆盖。重新构建前必须先确认目标确为本项目生成的 `tpf2mcp_1` 暂存目录，再以可恢复方式备份或清理；不得递归删除未核实的 Steam 目录。
@@ -128,17 +128,18 @@ powershell -ExecutionPolicy Bypass -File .\tools\build-workshop-package.ps1
 - Transport Fever 2 加载 Lua Mod 不等于可以自动启动外部 Python 进程。发布说明不得宣称 Bridge 会随 Mod 自动启动，必须保留实际启动方式：
 
 ```text
-进入本 Mod 的 mcp_server 目录
-python -m pip install -r requirements.txt
-python start_server.py
+进入本 Mod 的根目录
+使用用户自行准备的 Python 环境（依赖见 mcp_server/requirements.txt）
+python mcp_server/start_http_server.py
 
 查看前端时分别执行：
-python start_api.py
-进入 ui/rail-map 后执行 npm install 和 npm run dev
+python mcp_server/start_api.py
+npm --prefix ui/rail-map install
+npm --prefix ui/rail-map run dev
 浏览器打开 http://127.0.0.1:5173/?view=network
 ```
 
-- 上述命令是面向最终用户的通用说明，不得写死本机盘符。对源码进行开发验证时使用项目目录内 `.venv` 的 Python；对 Mod 发布包进行测试时，工作目录和被执行脚本必须位于实际待测 Mod 根目录内。当前 `requirements.txt` 没有第三方运行时依赖，不应为了形式执行用户级或全局安装。
+- 上述命令是面向最终用户的通用说明，不得写死本机盘符。发布部署路径统一以 `docs/usage/deployment.md` 为准：所有运行路径相对于 Mod 根目录，使用 `start-mcp.ps1` 或 `python mcp_server/start_http_server.py` 启动 HTTP。Python 环境由用户准备，项目不自动安装或管理用户环境。对源码进行开发验证使用项目内 `.venv`；发布验证的工作目录和被执行代码必须位于实际待测 Mod 内。
 
 ## 发布前验证
 

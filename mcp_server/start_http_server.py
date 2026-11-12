@@ -9,7 +9,7 @@ from pathlib import Path
 
 SERVER_DIRECTORY = Path(__file__).resolve().parent
 MOD_DIRECTORY = SERVER_DIRECTORY.parent
-RUNTIME_MARKER = MOD_DIRECTORY / "res" / "scripts" / "tpf2_mcp" / "runtime.lua"
+RUNTIME_MARKER = MOD_DIRECTORY / "res" / "scripts" / "tpf2_mcp" / "runtime" / "main.lua"
 
 sys.dont_write_bytecode = True
 if RUNTIME_MARKER.is_file():
@@ -26,12 +26,14 @@ def main() -> int:
         parser.error("port must be between 1 and 65535")
 
     import uvicorn
+    from tpf2_mcp.common.audit import http_logging_config
     uvicorn.run(
-        "tpf2_mcp.http_server:app",
+        "tpf2_mcp.entrypoints.http_server:app",
         host=arguments.host,
         port=arguments.port,
         log_level="info",
-        access_log=True,
+        access_log=False,
+        log_config=http_logging_config(),
     )
     return 0
 

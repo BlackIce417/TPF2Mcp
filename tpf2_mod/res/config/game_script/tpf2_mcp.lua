@@ -1,5 +1,5 @@
 function data()
-    local runtime = require "tpf2_mcp/hot_reload"
+    local runtime = require "tpf2_mcp/runtime/hot_reload"
     return {
         -- `load` is invoked repeatedly across UI and engine contexts. Starting
         -- file I/O here caused repeated Probe runs and log/CPU pressure.

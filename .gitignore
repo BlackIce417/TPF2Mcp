@@ -14,7 +14,7 @@ local_config.lua
 htmlcov/
 
 # Local runtime state and diagnostics
-diagnostics/
+/diagnostics/
 var/
 .tmp-*/
 native/**/build/
@@ -66,8 +66,15 @@ Thumbs.db
 !.env.example
 
 # Private reverse-engineering notes and research tools
-docs/NATIVE_ENGINE_RESEARCH.md
-docs/SIGNAL_OBSERVATIONS.md
+docs/development/NATIVE_ENGINE_RESEARCH.md
+docs/development/SIGNAL_OBSERVATIONS.md
 tools/ida-*.py
 tools/signal-write-watch.c
 tools/prepare-engine-probe.py
+
+# Local archive of superseded files; retrieve originals from Git history.
+/old/
+
+# Private notes remain private after documentation classification.
+docs/**/NATIVE_ENGINE_RESEARCH.md
+docs/**/SIGNAL_OBSERVATIONS.md

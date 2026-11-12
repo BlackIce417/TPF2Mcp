@@ -9,8 +9,8 @@ from pathlib import Path
 
 SERVER_DIRECTORY = Path(__file__).resolve().parent
 MOD_DIRECTORY = SERVER_DIRECTORY.parent
-RUNTIME_MARKER = MOD_DIRECTORY / "res" / "scripts" / "tpf2_mcp" / "runtime.lua"
-API_SERVER = MOD_DIRECTORY / "tools" / "serve-rail-map.py"
+RUNTIME_MARKER = MOD_DIRECTORY / "res" / "scripts" / "tpf2_mcp" / "runtime" / "main.lua"
+API_SERVER = MOD_DIRECTORY / "tools" / "web/serve-rail-map.py"
 
 sys.dont_write_bytecode = True
 if RUNTIME_MARKER.is_file():

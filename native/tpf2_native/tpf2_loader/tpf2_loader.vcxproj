@@ -72,6 +72,8 @@
   <PropertyGroup Label="UserMacros" />
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_DEBUG;TPF2LOADER_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -91,6 +93,8 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <WarningLevel>Level3</WarningLevel>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
@@ -112,6 +116,8 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;TPF2LOADER_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -133,6 +139,8 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
+      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <WarningLevel>Level3</WarningLevel>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
@@ -156,25 +164,25 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="framework.h" />
-    <ClInclude Include="loader_api.h" />
-    <ClInclude Include="loader_runtime.h" />
-    <ClInclude Include="lua_abi.h" />
-    <ClInclude Include="scheduler.h" />
-    <ClInclude Include="shared_bus.h" />
-    <ClInclude Include="native_telemetry_bridge.h" />
-    <ClInclude Include="command_bus.h" />
-    <ClInclude Include="train_telemetry_protocol.h" />
+    <ClInclude Include="lua\loader_api.h" />
+    <ClInclude Include="lifecycle\loader_runtime.h" />
+    <ClInclude Include="lua\lua_abi.h" />
+    <ClInclude Include="lifecycle\scheduler.h" />
+    <ClInclude Include="ipc\shared_bus.h" />
+    <ClInclude Include="..\shared\native_telemetry_bridge.h" />
+    <ClInclude Include="ipc\command_bus.h" />
+    <ClInclude Include="..\shared\train_telemetry_protocol.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
-    <ClCompile Include="loader_api.cpp" />
-    <ClCompile Include="loader_runtime.cpp" />
-    <ClCompile Include="lua_abi.cpp" />
-    <ClCompile Include="scheduler.cpp" />
-    <ClCompile Include="shared_bus.cpp" />
-    <ClCompile Include="native_telemetry_bridge.cpp" />
-    <ClCompile Include="command_bus.cpp" />
+    <ClCompile Include="lua\loader_api.cpp" />
+    <ClCompile Include="lifecycle\loader_runtime.cpp" />
+    <ClCompile Include="lua\lua_abi.cpp" />
+    <ClCompile Include="lifecycle\scheduler.cpp" />
+    <ClCompile Include="ipc\shared_bus.cpp" />
+    <ClCompile Include="ipc\native_telemetry_bridge.cpp" />
+    <ClCompile Include="ipc\command_bus.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
@@ -185,6 +193,10 @@
   <ItemGroup>
     <None Include="tpf2_loader.def" />
   </ItemGroup>
+  <PropertyGroup>
+    <OutDir>$(MSBuildThisFileDirectory)..\..\..\.tmp-build\native\bin\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(MSBuildThisFileDirectory)..\..\..\.tmp-build\native\obj\$(ProjectName)\$(Platform)\$(Configuration)\</IntDir>
+  </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
