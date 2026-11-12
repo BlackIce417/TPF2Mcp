@@ -5,6 +5,10 @@
 #include "scheduler.h"
 #include "shared_bus.h"
 #include "train_telemetry_protocol.h"
+#include "command_bus.h"
+#include "native_telemetry_bridge.h"
+#include <cstring>
+#include <cmath>
 
 extern "C" int luaopen_tpf2_loader(lua_State*)
 {
@@ -15,6 +19,7 @@ extern "C" int luaopen_tpf2_loader(lua_State*)
     // load/unload lifecycle.
     if (!tpf2::loader::pin_module()) return 0;
     tpf2::loader::shared_bus::initialize();
+    tpf2::loader::commands::initialize();
     tpf2::loader::scheduler::initialize();
     tpf2::loader::start_lifecycle_listener();
     tpf2::loader::start_controller();
@@ -43,8 +48,11 @@ extern "C" int tpf2_loader_lua_publish_binary(lua_State* state)
     std::size_t key_size = 0, payload_size = 0;
     const bool valid = tpf2::loader::lua_abi::string_argument(state, 1, key, key_size) &&
         tpf2::loader::lua_abi::string_argument(state, 2, payload, payload_size);
-    return tpf2::loader::lua_abi::return_boolean(state,
-        valid && tpf2::loader::shared_bus::publish(key, key_size, payload, payload_size));
+    constexpr char seed_key[] = "native-train-seed.bin";
+    const bool seed = valid && key_size == sizeof(seed_key) - 1 && !std::memcmp(key, seed_key, key_size);
+    return tpf2::loader::lua_abi::return_boolean(state, valid && (seed ?
+        tpf2::loader::native_telemetry::publish_seed(payload, payload_size) :
+        tpf2::loader::shared_bus::publish(key, key_size, payload, payload_size)));
 }
 
 extern "C" int tpf2_loader_lua_network_refresh_due(lua_State* state)
@@ -52,7 +60,32 @@ extern "C" int tpf2_loader_lua_network_refresh_due(lua_State* state)
     return tpf2::loader::lua_abi::return_boolean(state, tpf2::loader::scheduler::consume_network_refresh());
 }
 
-extern "C" std::uint32_t tpf2_loader_abi_version() { return 2; }
+extern "C" int tpf2_loader_lua_command_poll(lua_State* state)
+{
+    double values[3]{};
+    const auto count = tpf2::loader::commands::poll(values);
+    const int returned = tpf2::loader::lua_abi::return_numbers(state, values, count);
+    if (count && !returned) tpf2::loader::commands::finish(static_cast<std::uint64_t>(values[2]));
+    return returned;
+}
+extern "C" int tpf2_loader_lua_command_read(lua_State* state)
+{
+    double offset = 0, values[8]{};
+    if (!tpf2::loader::lua_abi::number_argument(state, 1, offset) || !std::isfinite(offset) ||
+        offset < 0 || offset >= tpf2::loader::commands::kPayloadCapacity || std::floor(offset) != offset) return 0;
+    const auto count = tpf2::loader::commands::read_words(static_cast<std::size_t>(offset), values);
+    return tpf2::loader::lua_abi::return_numbers(state, values, count);
+}
+extern "C" int tpf2_loader_lua_command_finish(lua_State* state)
+{
+    double sequence = 0;
+    const bool valid = tpf2::loader::lua_abi::number_argument(state, 1, sequence) &&
+        std::isfinite(sequence) && sequence > 0 && sequence <= 9007199254740991.0 && std::floor(sequence) == sequence;
+    return tpf2::loader::lua_abi::return_boolean(state,
+        valid && tpf2::loader::commands::finish(static_cast<std::uint64_t>(sequence)));
+}
+
+extern "C" std::uint32_t tpf2_loader_abi_version() { return 3; }
 extern "C" std::uint32_t tpf2_loader_train_protocol_version() { return tpf2::loader::telemetry::kProtocolVersion; }
 extern "C" std::uint32_t tpf2_loader_train_frame_header_size() { return sizeof(tpf2::loader::telemetry::TrainTelemetryFrameHeader); }
 extern "C" std::uint32_t tpf2_loader_train_wrapper_size() { return sizeof(tpf2::loader::telemetry::TrainWrapper); }

@@ -13,6 +13,7 @@
 #define TPF2_COMMAND_EVENT_NAME L"Local\\tpf2mcp_controller_cmd_event_v2"
 #define TPF2_REPLY_EVENT_NAME L"Local\\tpf2mcp_controller_reply_event_v2"
 #define TPF2_COMMAND_MUTEX_NAME L"Local\\tpf2mcp_controller_cmd_mutex_v2"
+#define TPF2_MOVEMENT_REQUIRE_RESUMABLE_ROUTE 0x1u
 
 enum Tpf2CommandOpcode : uint32_t
 {
@@ -36,6 +37,11 @@ enum Tpf2CommandOpcode : uint32_t
     TPF2_CMD_UPSERT_PATH_RULE = 0x0401,
     TPF2_CMD_REMOVE_PATH_RULE = 0x0402,
     TPF2_CMD_CLEAR_PATH_RULES = 0x0403,
+
+    TPF2_CMD_MOVE_TRAIN_DISTANCE = 0x0501,
+    TPF2_CMD_MOVE_TRAIN_ROUTE = 0x0502,
+    TPF2_CMD_RELEASE_TRAIN_MOVEMENT = 0x0503,
+    TPF2_CMD_GET_TRAIN_MOVEMENT = 0x0504,
 };
 
 enum Tpf2CommandResult : uint32_t
@@ -49,6 +55,7 @@ enum Tpf2CommandResult : uint32_t
     TPF2_COMMAND_CONTROLLER_DRAINING = 6,
     TPF2_COMMAND_VERSION_MISMATCH = 7,
     TPF2_COMMAND_INTERNAL_ERROR = 8,
+    TPF2_COMMAND_MOVEMENT_CONFLICT = 9,
 };
 
 #pragma pack(push, 1)
@@ -144,6 +151,36 @@ struct Tpf2PathRulePayload
     uint32_t edge_count;
     uint32_t edge_ids[2048];
 };
+
+// Ordered, directed engine transport edges, not simplified topology edge IDs.
+struct Tpf2DirectedTrackEdge
+{
+    uint32_t entity;
+    int32_t index;
+    uint32_t direction; // Native Path bool, exactly 0 or 1.
+};
+
+struct Tpf2MoveTrainDistancePayload
+{
+    uint64_t movement_id;
+    uint32_t vehicle_id;
+    float speed_mps;
+    float distance_m; // Measured from the train centre when the game accepts it.
+    uint32_t expires_in_seconds; // Includes holding at the target; wall-clock watchdog.
+};
+
+#define TPF2_MOVEMENT_ROUTE_CAPACITY 512u
+struct Tpf2MoveTrainRoutePayload
+{
+    uint64_t movement_id;
+    uint32_t vehicle_id;
+    float speed_mps;
+    uint32_t expires_in_seconds;
+    uint32_t target_index; // Index in edges[], centre of train stops here.
+    float target_offset_m; // Along the directed edge, from its entrance.
+    uint32_t edge_count;
+    Tpf2DirectedTrackEdge edges[TPF2_MOVEMENT_ROUTE_CAPACITY];
+};
 #pragma pack(pop)
 
 static_assert(sizeof(Tpf2CommandSlot) == 32 + TPF2_COMMAND_PAYLOAD_CAPACITY,
@@ -153,3 +190,6 @@ static_assert(sizeof(Tpf2SpeedRulePayload) <= TPF2_COMMAND_PAYLOAD_CAPACITY,
               "speed payload exceeds command slot");
 static_assert(sizeof(Tpf2PathRulePayload) <= TPF2_COMMAND_PAYLOAD_CAPACITY,
               "path payload exceeds command slot");
+static_assert(sizeof(Tpf2MoveTrainDistancePayload) == 24);
+static_assert(sizeof(Tpf2MoveTrainRoutePayload) == 32 + 12 * TPF2_MOVEMENT_ROUTE_CAPACITY);
+static_assert(sizeof(Tpf2MoveTrainRoutePayload) <= TPF2_COMMAND_PAYLOAD_CAPACITY);

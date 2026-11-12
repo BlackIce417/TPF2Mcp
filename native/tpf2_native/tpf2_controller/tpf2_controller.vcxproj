@@ -152,6 +152,10 @@
     <ClInclude Include="native_ipc.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="tpf2.h" />
+    <ClInclude Include="train_motion.h" />
+    <ClInclude Include="native_telemetry.h" />
+    <ClInclude Include="train_motion_math.h" />
+    <ClInclude Include="loader_session.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="detour.cpp" />
@@ -163,6 +167,8 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="tpf2.cpp" />
+    <ClCompile Include="train_motion.cpp" />
+    <ClCompile Include="native_telemetry.cpp" />
   </ItemGroup>
   <ItemGroup>
     <MASM Include="speed_hook.asm" />

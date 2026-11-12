@@ -73,6 +73,7 @@ class TrainControlService:
         footprint_reader: Callable[[], dict] = read_train_footprints,
         command_client_factory: Callable[[], ControllerCommandClient] = ControllerCommandClient,
         clock: Callable[[], float] = time.time,
+        topology_reader: Callable[[], dict] | None = None,
     ):
         self._frame_reader = frame_reader
         self._identity_reader = identity_reader
@@ -81,6 +82,11 @@ class TrainControlService:
         self._clock = clock
         self._lock = threading.Lock()
         self._controls: dict[str, dict[str, Any]] = {}
+        if topology_reader is None:
+            from .world_mcp import LoaderWorldRepository
+            topology_reader = LoaderWorldRepository().get_full_network_topology
+        self._topology_reader = topology_reader
+        self._occupancy_index = None
 
     @staticmethod
     def _rule_id(command_id: str) -> int:
@@ -163,6 +169,13 @@ class TrainControlService:
         return record
 
     def snapshot(self, *, display_name: str | None = None, include_parts: bool = False) -> dict[str, Any]:
+        topology, topology_error = None, None
+        try:
+            # Build static topology before sampling motion, so a cold graph
+            # build cannot make the returned train frame several seconds old.
+            topology = self._topology_reader()
+        except (OSError, KeyError, ValueError, RuntimeError) as exc:
+            topology_error = str(exc)
         frame, identities, footprints, footprint_payload = self._read()
         trains = [
             self._train_record(frame, train, identities.get(int(train.entity_id)),
@@ -177,15 +190,45 @@ class TrainControlService:
                 raise TrainControlError(f"AMBIGUOUS_TRAIN_NAME: display_name={display_name!r}")
         generated_at = footprint_payload.get("generated_at")
         age = self._clock() - generated_at if isinstance(generated_at, (int, float)) else None
+        observed_at = self._clock()
+        topology_id, section_states, occupancy_complete = None, [], False
+        try:
+            if topology is None:
+                raise RuntimeError(topology_error or 'TOPOLOGY_UNAVAILABLE')
+            if not topology.get('session_id') or topology['session_id'] != footprint_payload.get('session_id'):
+                raise RuntimeError('TOPOLOGY_SESSION_MISMATCH')
+            topology_id = topology['topology_id']
+            from .train_dispatch import OccupancyIndex
+            if self._occupancy_index is None or self._occupancy_index.topology_id != topology_id:
+                self._occupancy_index = OccupancyIndex(topology)
+            section_states, occupancy_complete = self._occupancy_index.overlay(
+                trains, sampled_at=observed_at, source_fresh=isinstance(age,(int,float)) and 0 <= age <= 3,
+                fleet_complete=display_name is None)
+        except (OSError, KeyError, ValueError, RuntimeError) as exc:
+            topology_error = str(exc)
+            topology_id = None
+            from .train_dispatch import TrainDispatchState
+            from dataclasses import asdict
+            for train in trains:
+                train['dispatch'] = asdict(TrainDispatchState(
+                    train['vehicle_id'], train['display_name'], None, observed_at, train['sample_sequence'],
+                    reasons=['TOPOLOGY_UNAVAILABLE']))
         return {
             "schema_version": 1,
             "sample_sequence": int(frame.header.sample_sequence),
             "sample_time_us": int(frame.header.sample_time_us),
+            "session_id": footprint_payload.get('session_id'),
             "train_count": len(trains),
+            "topology_id": topology_id,
+            "observed_at": observed_at,
+            "section_states": section_states,
+            "occupancy_complete": occupancy_complete,
+            "occupancy_scope": "FULL_FLEET" if display_name is None else "FILTERED_TRAIN",
             "telemetry": {
                 "train_wrappers": "AVAILABLE",
                 "route_windows": "AVAILABLE" if footprints else "UNAVAILABLE",
                 "route_window_age_seconds": round(age, 3) if age is not None else None,
+                "topology_error": topology_error,
             },
             "trains": trains,
         }

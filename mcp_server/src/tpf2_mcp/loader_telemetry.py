@@ -320,6 +320,8 @@ def read_json_channel(key: str) -> dict:
     value = json.loads(_read_bus_payload(key).decode("utf-8"))
     if not isinstance(value, dict):
         raise ValueError(f"loader JSON channel is not an object: {key}")
+    from .asset_cache import persist_asset
+    persist_asset(key, value)
     return value
 
 

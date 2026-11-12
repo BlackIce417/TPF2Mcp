@@ -2,6 +2,7 @@ local config = require "tpf2_mcp/config"
 local json = require "tpf2_mcp/json"
 local state = require "tpf2_mcp/state"
 local operations = require "tpf2_mcp/operations/dispatcher"
+local vehicle_direction = require "tpf2_mcp/operations/vehicle_reverse"
 local common = require "tpf2_mcp/collectors/common"
 local native_loader = require "tpf2_mcp/native_loader"
 local train_telemetry = require "tpf2_mcp/collectors/train_telemetry"
@@ -15,6 +16,18 @@ local update_count = 0
 local last_footprint_update, last_position_update, last_train_binary_update, last_train_identity_update = nil, nil, nil, nil
 local train_wrapper_probe_published = false
 local telemetry_performance = {}
+local runtime_performance, last_train_binary_detail = {}, nil
+local function timed(name, fn)
+    local started_at = common.clock()
+    fn()
+    local elapsed = (common.clock() - started_at) * 1000
+    local stats = runtime_performance[name] or { count = 0, total_ms = 0, max_ms = 0 }
+    stats.count, stats.last_ms = stats.count + 1, elapsed
+    stats.total_ms, stats.max_ms = stats.total_ms + elapsed, math.max(stats.max_ms, elapsed)
+    runtime_performance[name] = stats
+end
+local world_publication = { status = "PENDING" }
+local network_refresh_pending = true
 
 local function interval_updates(value, fallback)
     value = tonumber(value)
@@ -60,8 +73,9 @@ local function write_json(name, object)
     local encoded_at = common.clock()
     if not ok then return false, encoded end
     local written, err
-    if native_loader.available and native_loader.publish_json(name, encoded) then
-        written = true
+    if native_loader.available then
+        written = native_loader.publish_json(name, encoded)
+        if not written then err = "Loader shared-memory publication failed" end
     else
         written, err = write_file(name, encoded)
     end
@@ -184,6 +198,9 @@ local function heartbeat()
         path_resolution = config.path_resolution,
         snapshot_seq = sequence,
         allow_write_operations = config.allow_write_operations == true,
+        lua_command_protocol = native_loader.commands_available and 2 or 0,
+        world_catalog = world_publication,
+        session_id = require("tpf2_mcp/collectors/operational_telemetry").session_id(),
         allowed_operations = allowed_operations,
         last_update = now(),
         telemetry_performance = telemetry_performance,
@@ -197,6 +214,11 @@ local function response(request_id, ok, result, error)
 end
 
 local function write_response(request_id, ok, result, error)
+    if native_loader.available then
+        local value = response(request_id, ok, result, error)
+        value.session_id = require("tpf2_mcp/collectors/operational_telemetry").session_id()
+        return write_json("command-response.json", value)
+    end
     local response_name = "responses/" .. request_id .. ".json"
     local written, write_err = write_json(response_name, response(request_id, ok, result, error))
     if not written then return false, write_err end
@@ -214,18 +236,54 @@ local function validate_command(command)
     if type(command.request_id) ~= "string" or command.request_id == "" then return false, "INVALID_REQUEST", "request_id must be a non-empty string" end
     if type(command.command) ~= "string" then return false, "INVALID_REQUEST", "command must be a string" end
     if type(command.params) ~= "table" then return false, "INVALID_REQUEST", "params must be an object" end
-    if command.command ~= "ping" and command.command ~= "get_game_state" and command.command ~= "get_towns" and command.command ~= "get_town" and command.command ~= "get_rail_network" and command.command ~= "get_operational_telemetry" and command.command ~= "get_line_demand" and command.command ~= "get_vehicle_dispatch_state" and command.command ~= "get_timetable_status" and command.command ~= "execute_operation" then return false, "UNKNOWN_COMMAND", command.command end
+    if command.command ~= "ping" and command.command ~= "get_control_state" and command.command ~= "get_game_state" and command.command ~= "get_towns" and command.command ~= "get_town" and command.command ~= "get_rail_network" and command.command ~= "get_operational_telemetry" and command.command ~= "get_line_demand" and command.command ~= "get_vehicle_dispatch_state" and command.command ~= "get_timetable_status" and command.command ~= "execute_operation" then return false, "UNKNOWN_COMMAND", command.command end
     return true
 end
 
 local function handle(command)
+    if command.params._expected_session_id ~= nil and command.params._expected_session_id ~= require("tpf2_mcp/collectors/operational_telemetry").session_id() then
+        return false, nil, { code = "SESSION_CHANGED", message = "Command belongs to another save session" }
+    end
     if command.command == "ping" then return true, { message = "pong", snapshot_seq = sequence } end
+    if command.command == "get_control_state" then
+        local params = command.params
+        local value = { observed_at = now(), session_id = require("tpf2_mcp/collectors/operational_telemetry").session_id(), direction_control_protocol = 1 }
+        if type(params.line_id) == "number" then
+            local lines, status = require("tpf2_mcp/collectors/line").collect()
+            if not status.ok then return false, nil, { code = "LINE_READ_FAILED", message = "line collection incomplete" } end
+            for _, line in ipairs(lines) do if line.entity_id == params.line_id then value.line = line; break end end
+            if value.line == nil then return false, nil, { code = "LINE_NOT_FOUND", message = tostring(params.line_id) } end
+        elseif type(params.vehicle_id) == "number" then
+            local errors = {}
+            local vehicle = common.safe_get_component(params.vehicle_id, "TRANSPORT_VEHICLE", errors)
+            if vehicle == nil or #errors > 0 then return false, nil, { code = "VEHICLE_NOT_FOUND", message = tostring(params.vehicle_id) } end
+            value.vehicle = {
+                entity_id = params.vehicle_id,
+                name = common.name_from_component(common.safe_get_component(params.vehicle_id, "NAME", errors)),
+                line_id = common.entity_id(common.field(vehicle, "line")),
+                carrier = common.field(vehicle, "carrier"),
+                raw_state = common.field(vehicle, "state"),
+                raw_autoDeparture = common.field(vehicle, "autoDeparture"),
+                raw_userStopped = common.field(vehicle, "userStopped"),
+                departure_control = operations.departure_control(params.vehicle_id),
+                movement_control = operations.movement_control(params.vehicle_id),
+                direction_control = vehicle_direction.get_state(params.vehicle_id),
+                stop_index = common.field(vehicle, "stopIndex"),
+            }
+        else return false, nil, { code = "INVALID_PARAMETERS", message = "line_id or vehicle_id required" } end
+        return true, value
+    end
     if command.command == "get_game_state" then
         sequence = sequence + 1
-        local force_refresh = command.params.force_refresh == true
+        local force_refresh = command.params.force_refresh == true or command.params.refresh_assets == true
         local snapshot = state.snapshot(sequence, force_refresh)
+        snapshot.metadata = snapshot.metadata or {}
+        snapshot.metadata.refresh_policy = "ON_DEMAND_ASSETS"
         local ok, err = write_json("state.json", snapshot)
         if not ok then return false, nil, { code = "STATE_WRITE_FAILED", message = tostring(err) } end
+        if command.params.refresh_assets == true then network_refresh_pending = true end
+        -- Expensive reverse-engineering probes are never part of normal reads.
+        if command.params.include_diagnostics ~= true then return true, snapshot end
         -- Standalone engineering probe; it is intentionally outside the normal
         -- snapshot schema and contains only safe component metadata.
         write_json("company-probe.json", state.company_probe())
@@ -262,6 +320,21 @@ local function handle(command)
     end
     if command.command == "get_operational_telemetry" then
         local section = command.params.section or "inventory"
+        if section == "station_demand_lines" then
+            local station_id = command.params.station_id
+            if type(station_id) ~= "number" or station_id <= 0 or station_id % 1 ~= 0 then
+                return false, nil, { code = "INVALID_PARAMETERS", message = "Positive station_id required" }
+            end
+            return true, state.station_demand_lines(station_id)
+        end
+        if section == "line_demand" then
+            local line_id, maximum = command.params.line_id, command.params.maximum_entities or 20000
+            if type(line_id) ~= "number" or line_id <= 0 or line_id % 1 ~= 0
+                or type(maximum) ~= "number" or maximum < 100 or maximum > 50000 or maximum % 1 ~= 0 then
+                return false, nil, { code = "INVALID_PARAMETERS", message = "Positive line_id and maximum_entities 100..50000 required" }
+            end
+            return true, state.line_demand(line_id, maximum)
+        end
         if section ~= "inventory" and section ~= "signals" and section ~= "signal_states" and section ~= "vehicles" and section ~= "vehicles_live" and section ~= "vehicle_positions" and section ~= "train_footprints" and section ~= "stations" then
             return false, nil, { code = "INVALID_REQUEST", message = "unsupported telemetry section: " .. tostring(section) }
         end
@@ -294,6 +367,41 @@ local function handle(command)
         return true, result
     end
     if command.command == "execute_operation" then
+        local control = command.params
+        local expected = control._control_precondition
+        if expected ~= nil then
+            local errors, matches = {}, false
+            local target, parameters = control.target or {}, control.parameters or {}
+            if control.operation_type == "SET_LINE_STOP_POLICY" then
+                local line = common.safe_get_component(target.line_id, "LINE", errors)
+                local stops = common.sequence_values(common.field(line, "stops"))
+                local stop = type(parameters.stop_index) == "number" and stops[parameters.stop_index + 1] or nil
+                local policy = expected.policy or {}
+                matches = stop ~= nil
+                    and common.entity_id(common.field(stop, "stationGroup")) == expected.station_id
+                    and common.field(stop, "station") == expected.station_index
+                    and common.field(stop, "terminal") == expected.terminal_id
+                    and common.field(stop, "loadMode") == policy.load_mode
+                    and common.field(stop, "minWaitingTime") == policy.min_waiting_time
+                    and common.field(stop, "maxWaitingTime") == policy.max_waiting_time
+            else
+                local vehicle = common.safe_get_component(target.vehicle_id, "TRANSPORT_VEHICLE", errors)
+                local name = common.name_from_component(common.safe_get_component(target.vehicle_id, "NAME", errors))
+                matches = vehicle ~= nil and name == expected.display_name
+                    and common.field(vehicle, "carrier") == 1
+                    and common.entity_id(common.field(vehicle, "line")) == expected.line_id
+                if control.operation_type == "HOLD_VEHICLE_AT_TERMINAL" then
+                    matches = matches and common.field(vehicle, "state") == 2
+                end
+            end
+            if not matches or #errors > 0 then
+                return false, nil, { code = "CONTROL_PRECONDITION_CHANGED", message = "Target changed since command preview" }
+            end
+        end
+        if control.operation_type == "STOP_VEHICLE" and type(control.parameters) == "table"
+            and control.parameters.reverse_after_stop == true then
+            return vehicle_direction.stop_and_reverse(control)
+        end
         return operations.dispatch(command.params)
     end
     return false, nil, { code = "UNKNOWN_COMMAND", message = tostring(command.command) }
@@ -337,6 +445,7 @@ local function report_train_binary_if_due()
     if last_train_binary_update and update_count - last_train_binary_update < updates then return end
     last_train_binary_update = update_count
     local ok, detail = train_telemetry.publish(update_count)
+    last_train_binary_detail = detail
     if not ok then
         log("WARN", "cannot publish binary train wrappers: " .. tostring(detail and detail.error or "unknown error"))
         return
@@ -364,19 +473,44 @@ function M.start()
     if started then return end
     started = true
     run_probe()
-    -- A command file is a mailbox slot, not a durable job queue.  Ignore the
-    -- request already present when a save starts; otherwise a command that
-    -- crashed or completed in the previous session is replayed automatically.
-    local existing_content = read_file("command.json")
-    if existing_content then
-        local decoded_ok, existing = pcall(json.decode, existing_content)
-        if decoded_ok and type(existing) == "table" and type(existing.request_id) == "string" then
-            last_request_id = existing.request_id
-            log("INFO", "ignored pre-existing bridge request: " .. last_request_id)
-        end
-    end
     local ok, err = write_json("heartbeat.json", heartbeat())
     if ok then log("INFO", "bridge probe completed") else log("ERROR", "cannot write heartbeat: " .. tostring(err)) end
+end
+
+local function report_world_if_due()
+    if world_publication.status == "PUBLISHED" then return end
+    local current = now()
+    local interval = math.min(30, 2 ^ math.min(5, world_publication.failures or 1))
+    if world_publication.last_attempt and current >= world_publication.last_attempt
+        and current - world_publication.last_attempt < interval then return end
+    world_publication.last_attempt = current
+    local session = require("tpf2_mcp/collectors/operational_telemetry").session_id()
+    world_publication.session_id = session
+    local ok, snapshot = pcall(state.snapshot, sequence + 1, true)
+    if ok and type(snapshot) == "table" and snapshot.game and snapshot.game.status == "available"
+        and snapshot.metadata and snapshot.metadata.session_id == session then
+        snapshot.metadata.refresh_policy = "ON_DEMAND_ASSETS"
+        local written, err = write_json("state.json", snapshot)
+        if written then
+            sequence = sequence + 1
+            local complete = true
+            for _, name in ipairs({"towns", "industries", "stations", "lines"}) do
+                local status = (snapshot.metadata.collector_status or {})[name]
+                if status and status.ok == false then complete = false end
+            end
+            world_publication.status = complete and "PUBLISHED" or "PARTIAL"
+            world_publication.failures = complete and 0 or (world_publication.failures or 0) + 1
+            world_publication.refresh_policy = "ON_DEMAND_ASSETS"
+            world_publication.published_at = current
+            world_publication.error = not complete and "Some world collectors are incomplete; retrying" or nil
+            return
+        end
+        snapshot = err
+    end
+    world_publication.status = "RETRYING"
+    world_publication.failures = (world_publication.failures or 0) + 1
+    world_publication.error = ok and "World snapshot unavailable or not published" or tostring(snapshot)
+    log("WARN", "world catalog publication will retry: " .. world_publication.error)
 end
 
 function M.set_track_resources(entries)
@@ -384,12 +518,27 @@ function M.set_track_resources(entries)
 end
 
 local function refresh_rail_network_if_due()
-    if not native_loader.available or not native_loader.network_refresh_due() then return end
+    if not native_loader.available then return end
+    local due = native_loader.network_refresh_due()
+    if not network_refresh_pending and not due then return end
+    network_refresh_pending = false
     state.invalidate_rail_network()
     local network = state.rail_network()
     network.report_mode = "UNIFIED_PERIODIC_OR_EXPLICIT_REFRESH"
+    -- Both inventories are captured in this game-thread callback. Consumers
+    -- must match capture_id before combining them; it is not a disk filename.
+    local session = require("tpf2_mcp/collectors/operational_telemetry").session_id()
+    local capture_id = session .. ":" .. tostring(now()) .. ":" .. tostring(update_count)
+    network.session_id = session
+    network.capture_id = capture_id
+    network.generated_at = now()
+    local signals = state.operational_telemetry("signals")
+    signals.session_id = session
+    signals.capture_id = capture_id
     local ok, err = write_json("rail-network.json", network)
     if not ok then log("WARN", "cannot publish refreshed rail network: " .. tostring(err)) end
+    local signals_ok, signals_err = write_json("operational-telemetry-signals.json", signals)
+    if not signals_ok then log("WARN", "cannot publish refreshed signal inventory: " .. tostring(signals_err)) end
 end
 
 -- Only transient read-side state is transferred. The dispatcher/timetable
@@ -401,7 +550,8 @@ function M.export_reload_state()
         last_train_binary_update = last_train_binary_update,
         last_train_identity_update = last_train_identity_update,
         train_wrapper_probe_published = train_wrapper_probe_published,
-        telemetry_performance = telemetry_performance }
+        telemetry_performance = telemetry_performance, world_publication = world_publication,
+        network_refresh_pending = network_refresh_pending }
 end
 function M.import_reload_state(value)
     assert(type(value) == "table" and value.version == 1, "incompatible runtime state")
@@ -412,20 +562,60 @@ function M.import_reload_state(value)
     last_train_identity_update = value.last_train_identity_update
     train_wrapper_probe_published = value.train_wrapper_probe_published == true
     telemetry_performance = value.telemetry_performance
+    world_publication = value.world_publication or { status = "PENDING" }
+    if world_publication.refresh_policy ~= "ON_DEMAND_ASSETS" then
+        world_publication = { status = "PENDING" }
+    end
+    network_refresh_pending = value.network_refresh_pending ~= false
 end
 
 function M.save() return operations.save_state() end
-function M.load(value) operations.load_state(value) end
+function M.load(value)
+    require("tpf2_mcp/collectors/operational_telemetry").begin_session()
+    state.reset_session()
+    last_request_id, sequence, update_count = nil, 0, 0
+    last_footprint_update, last_position_update, last_train_binary_update, last_train_identity_update = nil, nil, nil, nil
+    train_wrapper_probe_published = false
+    world_publication, network_refresh_pending = { status = "PENDING" }, true
+    operations.load_state(value)
+    if native_loader.available then
+        -- Loader outlives the save. Invalidate its old heartbeat immediately,
+        -- before the first update can publish the new world's inventories.
+        local loading = heartbeat()
+        loading.bridge_ready, loading.lifecycle = false, "LOADING"
+        write_json("heartbeat.json", loading)
+    end
+end
 
 function M.tick()
+    local tick_started_at = common.clock()
     update_count = update_count + 1
-    operations.tick()
+    timed("operations", operations.tick)
+    timed("direction", vehicle_direction.tick)
     if not started then M.start() end
-    refresh_rail_network_if_due()
-    report_live_vehicles_if_due()
-    report_train_footprints_if_due()
-    report_train_binary_if_due()
-    report_train_identities_if_due()
+    timed("network", refresh_rail_network_if_due)
+    common.begin_read_frame()
+    local operational = require("tpf2_mcp/collectors/operational_telemetry")
+    local native_active, metadata_due = false, false
+    if type(native_loader.native_telemetry_tick) == "function" then
+        local world_ok, world = pcall(api.engine.util.getWorld)
+        if world_ok then native_active, metadata_due = native_loader.native_telemetry_tick(operational.session_id(), world) end
+    end
+    if metadata_due then
+        timed("native_metadata", function()
+            local ok, detail = train_telemetry.publish(update_count, "native-train-seed.bin")
+            last_train_binary_detail = detail
+            if not ok then log("WARN", "cannot seed native train metadata: " .. tostring(detail and detail.error)) end
+        end)
+    end
+    if not native_active then
+        timed("vehicle_positions", report_live_vehicles_if_due)
+        timed("train_footprints", report_train_footprints_if_due)
+        timed("train_binary", report_train_binary_if_due)
+    end
+    timed("train_identities", report_train_identities_if_due)
+    common.end_read_frame()
+    timed("world", report_world_if_due)
     -- Stagger state sampling from full train bodies. Five simulation updates
     -- is a nominal cadence, not a guaranteed wall-clock sampling rate.
     local signal_updates = interval_updates(config.signal_state_report_interval_updates, 5)
@@ -437,32 +627,44 @@ function M.tick()
         local ok, err = write_json("operational-telemetry-signal_states.json", telemetry)
         if not ok then log("WARN", "cannot publish signal states: " .. tostring(err)) end
     end
-    local poll_interval = tonumber(config.bridge_poll_interval_updates) or 5
-    if poll_interval < 1 then poll_interval = 5 end
-    if update_count % poll_interval ~= 0 then return end
-    if type(config.refresh_permissions) == "function" then config.refresh_permissions() end
-    local content, read_err = read_file("command.json")
-    if content then
-        local decoded_ok, command = pcall(json.decode, content)
-        if not decoded_ok then
-            log("WARN", "invalid command JSON: " .. tostring(command))
-        else
+    -- The Loader owns opcode parsing and the native mailbox. Lua is only
+    -- entered here, on the engine's callback thread, never on an IPC worker.
+    local command, token, poll_error
+    if native_loader.commands_available then command, token, poll_error = native_loader.poll_command() end
+    if poll_error then log("WARN", "Loader command rejected: " .. tostring(poll_error)) end
+    if command then
+        local ran, failure = pcall(function()
+            if type(config.refresh_permissions) == "function" then config.refresh_permissions() end
             local valid, code, message = validate_command(command)
             local request_id = type(command.request_id) == "string" and command.request_id or ""
             if not valid then
-                local written, write_err = write_response(request_id, false, nil, { code = code, message = message })
-                if not written then log("ERROR", "cannot write validation response: " .. tostring(write_err)) end
-            elseif command.request_id ~= last_request_id then
-                last_request_id = command.request_id
+                write_response(request_id, false, nil, { code = code, message = message })
+            elseif request_id ~= last_request_id then
+                last_request_id = request_id
                 local ok, result, err = handle(command)
-                local written, write_err = write_response(command.request_id, ok, result, err)
-                if not written then log("ERROR", "cannot write response: " .. tostring(write_err)) end
+                local written, write_err = write_response(request_id, ok, result, err)
+                if not written then error(tostring(write_err)) end
+            else
+                write_response(request_id, false, nil, { code = "DUPLICATE_REQUEST", message = "Use a new transport request ID" })
             end
+        end)
+        if not ran then
+            log("ERROR", "Loader command failed: " .. tostring(failure))
+            pcall(write_response, command.request_id or "", false, nil, { code = "LUA_COMMAND_FAILED", message = tostring(failure) })
         end
-    elseif read_err then
-        -- A missing command is normal and intentionally not logged every tick.
+        native_loader.finish_command(token)
     end
+    local poll_interval = tonumber(config.bridge_poll_interval_updates) or 5
+    if poll_interval < 1 then poll_interval = 5 end
+    if update_count % poll_interval ~= 0 then return end
     write_json("heartbeat.json", heartbeat())
+    -- Separate channel: GUI load callbacks must not overwrite simulation timings.
+    write_json("runtime-performance.json", { schema_version = 1, generated_at = now(),
+        session_id = require("tpf2_mcp/collectors/operational_telemetry").session_id(),
+        timing_basis = "LUA_OS_CLOCK", update_count = update_count,
+        tick_last_ms = (common.clock() - tick_started_at) * 1000,
+        stages = runtime_performance, telemetry = telemetry_performance,
+        train_binary = last_train_binary_detail })
 end
 
 return M

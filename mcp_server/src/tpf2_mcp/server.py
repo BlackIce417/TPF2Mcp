@@ -17,6 +17,9 @@ from .operations import OperationController, capabilities as operation_capabilit
 from .tasks import TaskOrchestrator, goal_capabilities
 from .dispatch import agent_operations_guide, station_waiting_state, vehicle_dispatch_state
 from .train_control import TrainControlError, TrainControlService
+from .stop_control import StopControlService, STOP_CONTROL_TOOLS, OPERATIONS as STOP_CONTROL_OPERATIONS
+from .movement_mcp import MovementService, MOVEMENT_TOOLS, MOVEMENT_TOOL_NAMES, MOVEMENT_WRITES
+from .demand_mcp import DemandService, DEMAND_TOOLS, DEMAND_TOOL_NAMES
 from .audit import write_audit, start_audit, safe_arguments
 from .world_mcp import (
     LoaderWorldError, LoaderWorldRepository, WORLD_TOOL_DEFINITIONS,
@@ -55,8 +58,11 @@ _intelligence_cache: dict[int, tuple[int | None, NetworkIntelligenceIndex]] = {}
 _planning_cache: dict[int, tuple[int | None, DecisionSupport]] = {}
 _operation_controllers: dict[int, OperationController] = {}
 _task_orchestrators: dict[int, TaskOrchestrator] = {}
-_train_control_service = TrainControlService()
 _loader_world_repository = LoaderWorldRepository()
+_train_control_service = TrainControlService(topology_reader=_loader_world_repository.get_full_network_topology)
+_stop_control_service = StopControlService()
+_movement_service = MovementService()
+_demand_service = DemandService(_loader_world_repository)
 
 
 _STATEFUL_TOOLS = {
@@ -66,6 +72,12 @@ _STATEFUL_TOOLS = {
 }
 _DESTRUCTIVE_TOOLS = {"continue_task", "cancel_task", "set_train_speed_limit", "cancel_train_speed_limit"}
 _IDEMPOTENT_WRITES = {"set_train_speed_limit", "cancel_train_speed_limit"}
+_STATEFUL_TOOLS.update(STOP_CONTROL_OPERATIONS)
+_DESTRUCTIVE_TOOLS.update(STOP_CONTROL_OPERATIONS)
+_IDEMPOTENT_WRITES.update(STOP_CONTROL_OPERATIONS)
+_STATEFUL_TOOLS.update(MOVEMENT_WRITES)
+_DESTRUCTIVE_TOOLS.update(MOVEMENT_WRITES)
+_IDEMPOTENT_WRITES.update(MOVEMENT_WRITES)
 
 
 def _tool_title(name: str) -> str:
@@ -101,7 +113,7 @@ _TRAIN_CONTROL_TOOLS = [
     {
         "name": "get_train_control_snapshot",
         "title": "Get Train Control Snapshot",
-        "description": "Read current Loader train telemetry for dispatch decisions. Use display_name in user-facing reasoning; vehicle_id is returned only as the stable internal identity. Optionally include per-car wrappers.",
+        "description": "Read Loader train motion and dynamic topology occupancy. Each train includes dispatch with topology_id, observed occupied_section_ids (physical track_resource_id shared by reverse arcs), occupied_station_ids (station wrapper node IDs), head/tail/center section and confidence. Missing full-body coverage is PARTIAL; unobserved sections remain UNKNOWN, never assumed clear. sampled_at is Python observation time; sample_time_us is the source simulation clock. Optional display_name filters scope; optional include_parts returns carriage wrappers.",
         "inputSchema": {"type": "object", "properties": {
             "display_name": {"type": "string", "minLength": 1, "maxLength": 256},
             "include_parts": {"type": "boolean", "default": False},
@@ -110,6 +122,16 @@ _TRAIN_CONTROL_TOOLS = [
             "schema_version": {"type": "integer"}, "sample_sequence": {"type": "integer"},
             "sample_time_us": {"type": "integer"}, "train_count": {"type": "integer"},
             "telemetry": {"type": "object"}, "trains": {"type": "array", "items": {"type": "object"}},
+            "topology_id": {"type": ["string", "null"]},
+            "observed_at": {"type": "number"},
+            "occupancy_complete": {"type": "boolean"},
+            "occupancy_scope": {"type": "string", "enum": ["FULL_FLEET", "FILTERED_TRAIN"]},
+            "section_states": {"type": "array", "items": {"type": "object", "properties": {
+                "section_id": {"type": "integer"},
+                "directed_edge_ids": {"type": "array", "items": {"type": "integer"}},
+                "occupying_trains": {"type": "array", "items": {"type": "object"}},
+                "status": {"type": "string", "enum": ["OCCUPIED", "CLEAR", "UNKNOWN"]},
+            }, "required": ["section_id", "directed_edge_ids", "occupying_trains", "status"]}},
         }, "required": ["schema_version", "sample_sequence", "train_count", "telemetry", "trains"]},
     },
     {
@@ -184,7 +206,7 @@ _CURRENT_NATIVE_TOOL_NAMES = {
     "set_train_speed_limit",
     "cancel_train_speed_limit",
     "get_active_train_controls",
-} | WORLD_TOOL_NAMES
+} | WORLD_TOOL_NAMES | STOP_CONTROL_OPERATIONS.keys() | DEMAND_TOOL_NAMES | MOVEMENT_TOOL_NAMES
 
 
 def _index(bridge: BridgeClient | MockBridge, force_refresh: bool = False) -> SnapshotIndex:
@@ -277,7 +299,7 @@ def handle(message: dict[str, Any], bridge: BridgeClient | MockBridge) -> dict[s
         raise
     result = (response or {}).get('result', {})
     structured = result.get('structuredContent', {})
-    receipt = {key: structured[key] for key in ('command_id', 'rule_id', 'reason', 'reason_text', 'result', 'status')
+    receipt = {key: structured[key] for key in ('command_id', 'rule_id', 'movement_id', 'operation_id', 'reason', 'reason_text', 'result', 'status')
                if isinstance(structured, dict) and key in structured}
     error = (response or {}).get('error')
     write_audit({'event': 'tool_call_finished', **invocation,
@@ -300,97 +322,14 @@ def _handle(message: dict[str, Any], bridge: BridgeClient | MockBridge) -> dict[
                 "Only Loader shared-memory telemetry and Controller V2 command tools are exposed. Legacy file-bridge "
                 "world, network, station, analysis, and task tools are isolated until migrated. Read current telemetry "
                 "before control; refer to trains by display_name. Never control on stale route data. Speed writes are "
-                "short-lived and require command_id-scoped confirmation."
+                "short-lived and require command_id-scoped confirmation. Movement/reversal tools are asynchronous: "
+                "poll status and actual speed; MOVING does not prove physical movement. Reverse leaves manual stop set; "
+                "wait for REVERSED, resume_train, refresh native movement context, then move. "
+                "Native movement retains signal and occupancy protection; never claim it ignores red signals."
             ),
         }}
     if method == "tools/list":
-        tools = [
-            {"name": "get_bridge_status", "description": "Return TPF2 bridge liveness and probe state.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-            {"name": "get_game_state", "description": "Return normalized world metadata, game, company, counts, and snapshot age. Set force_refresh to bypass bridge and MCP snapshot caches.", "inputSchema": {"type": "object", "properties": {"force_refresh": {"type": "boolean"}}, "additionalProperties": False}},
-            {"name": "get_world_snapshot", "description": "Return the complete latest normalized world snapshot. Set force_refresh to bypass bridge and MCP snapshot caches.", "inputSchema": {"type": "object", "properties": {"force_refresh": {"type": "boolean"}}, "additionalProperties": False}},
-            {"name": "probe_vehicle_speed_control", "description": "Read-only experiment: refresh engine API inventories and look for per-vehicle speed setters. Never executes a candidate or changes train speed; missing/stale evidence remains UNKNOWN.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}, "annotations": {"readOnlyHint": True}},
-            {"name": "get_cargo_types", "description": "Return dynamically enumerated cargo types from TPF2's cargo repository.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-            {"name": "get_towns", "description": "Return towns from the latest normalized world snapshot.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-            {"name": "get_town", "description": "Return one town by its TPF2 entity ID.", "inputSchema": {"type": "object", "properties": {"entity_id": {"type": "integer"}}, "required": ["entity_id"], "additionalProperties": False}},
-            *[{"name": f"get_{plural}", "description": f"Return {plural} from the latest normalized world snapshot.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}} for plural in ("industries", "stations", "lines", "vehicles")],
-            *[{"name": f"get_{singular}", "description": f"Return one {singular} by TPF2 entity ID.", "inputSchema": {"type": "object", "properties": {"entity_id": {"type": "integer"}}, "required": ["entity_id"], "additionalProperties": False}} for singular in ("industry", "station", "line", "vehicle")],
-            {"name": "get_line_summary", "description": "Return a line with its resolved station groups and assigned vehicles.", "inputSchema": {"type": "object", "properties": {"line_id": {"type": "integer"}}, "required": ["line_id"], "additionalProperties": False}},
-            {"name": "get_dispatch_overview", "description": "Agent-oriented compact operating entry point: game state, network counts, capabilities, and safe control workflow.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-            {"name": "get_station_dispatch_state", "description": "Return one station's identity, connected lines, neighboring stations, and line-assigned waiting passenger/cargo counts with explicit quality metadata.", "inputSchema": {"type": "object", "properties": {"station_id": {"type": "integer"}, "maximum_entities": {"type": "integer", "minimum": 100, "maximum": 50000}}, "required": ["station_id"], "additionalProperties": False}},
-            {"name": "get_line_dispatch_state", "description": "Return one line's topology, fleet, structural diagnosis, and live Bridge-classified passenger/cargo demand.", "inputSchema": {"type": "object", "properties": {"line_id": {"type": "integer"}, "maximum_entities": {"type": "integer", "minimum": 1, "maximum": 100000}}, "required": ["line_id"], "additionalProperties": False}},
-            {"name": "get_vehicle_dispatch_state", "description": "Return one vehicle's current speed/state, next stop, capacity, and Bridge-classified onboard passenger/cargo counts.", "inputSchema": {"type": "object", "properties": {"vehicle_id": {"type": "integer"}, "maximum_entities": {"type": "integer", "minimum": 1, "maximum": 100000}}, "required": ["vehicle_id"], "additionalProperties": False}},
-            {"name": "get_agent_operations_guide", "description": "Return the canonical MCP-only read, proposal, approval, execution, and verification workflow for an operating agent.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-            {"name": "get_line_demand", "description": "Collect live passenger and freight demand assigned to one line through the Bridge, including onboard, waiting, average wait, observed cargo types, and engine-observed line-stop origin/destination indices. This is a bounded read-only probe and does not reassign demand or mutate service.", "inputSchema": {"type": "object", "properties": {"line_id": {"type": "integer"}, "maximum_entities": {"type": "integer", "minimum": 1, "maximum": 100000}}, "required": ["line_id"], "additionalProperties": False}},
-            {"name": "get_transport_network_summary", "description": "Return deterministic transport-network counts and relationship summaries.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-            {"name": "find_lines_without_vehicles", "description": "List lines whose verified assigned-vehicle count is zero.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-            {"name": "find_unassigned_vehicles", "description": "List vehicles with no line and vehicles whose line reference is broken.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-            {"name": "find_suspicious_lines", "description": "Apply deterministic stop/vehicle-count rules; not a profitability claim.", "inputSchema": {"type": "object", "properties": {"vehicle_threshold": {"type": "integer", "minimum": 1}}, "additionalProperties": False}},
-            {"name": "get_vehicle_operating_state", "description": "Return verified vehicle operating metrics and availability metadata.", "inputSchema": {"type": "object", "properties": {"vehicle_id": {"type": "integer"}}, "required": ["vehicle_id"], "additionalProperties": False}},
-            {"name": "get_station_operating_state", "description": "Return verified station-group waiting metrics and availability metadata.", "inputSchema": {"type": "object", "properties": {"station_id": {"type": "integer"}}, "required": ["station_id"], "additionalProperties": False}},
-            {"name": "get_line_operating_summary", "description": "Return line topology plus verified operational/finance availability.", "inputSchema": {"type": "object", "properties": {"line_id": {"type": "integer"}}, "required": ["line_id"], "additionalProperties": False}},
-            {"name": "get_line_scorecard", "description": "Return verified line topology, frequency/throughput, and derived static fleet-capacity metrics; not load or profitability.", "inputSchema": {"type": "object", "properties": {"line_id": {"type": "integer"}}, "required": ["line_id"], "additionalProperties": False}},
-            {"name": "diagnose_line_structure", "description": "Return explainable structural warnings based only on stops, assigned vehicles, verified headway, throughput, and static fleet capacity.", "inputSchema": {"type": "object", "properties": {"line_id": {"type": "integer"}, "long_headway_seconds": {"type": "number", "exclusiveMinimum": 0}, "short_headway_seconds": {"type": "number", "exclusiveMinimum": 0}, "high_vehicle_count": {"type": "integer", "minimum": 1}}, "required": ["line_id"], "additionalProperties": False}},
-            {"name": "diagnose_transport_network", "description": "Return evidence-backed network structural diagnostics; it does not infer profitability, congestion, load, or waiting.", "inputSchema": {"type": "object", "properties": {"long_headway_seconds": {"type": "number", "exclusiveMinimum": 0}, "short_headway_seconds": {"type": "number", "exclusiveMinimum": 0}, "high_vehicle_count": {"type": "integer", "minimum": 1}}, "additionalProperties": False}},
-            {"name": "compare_lines", "description": "Compare verified and derived structural metrics for selected lines.", "inputSchema": {"type": "object", "properties": {"line_ids": {"type": "array", "items": {"type": "integer"}, "minItems": 1, "maxItems": 100}}, "required": ["line_ids"], "additionalProperties": False}},
-            {"name": "rank_lines", "description": "Rank lines by a whitelisted verified or derived structural metric.", "inputSchema": {"type": "object", "properties": {"metric": {"type": "string", "enum": ["frequency_seconds", "throughput", "vehicle_count", "fleet_capacity_total"]}, "order": {"type": "string", "enum": ["asc", "desc"]}, "limit": {"type": "integer", "minimum": 1, "maximum": 100}}, "required": ["metric"], "additionalProperties": False}},
-            {"name": "get_station_connectivity", "description": "Return station-group line connections and derived neighboring station groups; not passenger traffic.", "inputSchema": {"type": "object", "properties": {"station_id": {"type": "integer"}}, "required": ["station_id"], "additionalProperties": False}},
-            {"name": "rank_transfer_stations", "description": "Rank station groups by line connectivity, not traffic or waiting volume.", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 100}}, "additionalProperties": False}},
-            {"name": "find_station_route", "description": "Find a route through the existing station/line connectivity graph. This is not physical track, road, or map navigation.", "inputSchema": {"type": "object", "properties": {"source_station_id": {"type": "integer"}, "target_station_id": {"type": "integer"}}, "required": ["source_station_id", "target_station_id"], "additionalProperties": False}},
-            {"name": "get_fleet_summary", "description": "Return assigned/unassigned counts and verified static capacity distribution; not current load.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-            {"name": "get_fleet_profile", "description": "Return snapshot-bound fleet assignment, raw depot/state, and capacity profile.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-            {"name": "get_line_fleet_profile", "description": "Return one line's assigned vehicle IDs and verified/derived fleet metrics.", "inputSchema": {"type": "object", "properties": {"line_id": {"type": "integer"}}, "required": ["line_id"], "additionalProperties": False}},
-            {"name": "rank_vehicles_by_capacity", "description": "Rank vehicles by verified configured capacity, not live load.", "inputSchema": {"type": "object", "properties": {"order": {"type": "string", "enum": ["asc", "desc"]}, "limit": {"type": "integer", "minimum": 1, "maximum": 100}}, "additionalProperties": False}},
-            {"name": "get_line_profile", "description": "Return a compact snapshot-bound structural line profile using verified and derived metrics only.", "inputSchema": {"type": "object", "properties": {"line_id": {"type": "integer"}}, "required": ["line_id"], "additionalProperties": False}},
-            {"name": "classify_lines", "description": "Classify lines by explicit structural heuristics, not profitability or demand.", "inputSchema": {"type": "object", "properties": {"low_fleet_threshold": {"type": "integer", "minimum": 0}, "long_route_stop_threshold": {"type": "integer", "minimum": 1}, "high_frequency_seconds": {"type": "number", "exclusiveMinimum": 0}, "high_capacity_threshold": {"type": "number", "minimum": 0}}, "additionalProperties": False}},
-            {"name": "find_line_outliers", "description": "Find statistical line-metric outliers; results are not operating-health conclusions.", "inputSchema": {"type": "object", "properties": {"metric": {"type": "string", "enum": ["frequency_seconds", "vehicle_count", "fleet_capacity_total", "stop_count", "throughput", "vehicles_per_stop", "capacity_per_stop"]}, "method": {"type": "string", "enum": ["iqr", "percentile"]}, "percentile": {"type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 0.5}}, "required": ["metric"], "additionalProperties": False}},
-            {"name": "find_similar_lines", "description": "Find structurally similar lines using z-score normalized verified/derived features; not demand or profitability similarity.", "inputSchema": {"type": "object", "properties": {"line_id": {"type": "integer"}, "limit": {"type": "integer", "minimum": 1, "maximum": 100}}, "required": ["line_id"], "additionalProperties": False}},
-            {"name": "get_station_profile", "description": "Return topology-only station-group hub/connectivity metrics, not passenger traffic.", "inputSchema": {"type": "object", "properties": {"station_id": {"type": "integer"}}, "required": ["station_id"], "additionalProperties": False}},
-            {"name": "rank_station_hubs", "description": "Rank station groups by a topology hub metric, not traffic or waiting volume.", "inputSchema": {"type": "object", "properties": {"metric": {"type": "string", "enum": ["line_count", "graph_degree", "reachable_station_count"]}, "limit": {"type": "integer", "minimum": 1, "maximum": 100}}, "additionalProperties": False}},
-            {"name": "analyze_network_reachability", "description": "Return line/station graph connected components; not physical-map connectivity.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-            {"name": "find_isolated_station_clusters", "description": "Find small disconnected line/station graph components; not physical-map isolation.", "inputSchema": {"type": "object", "properties": {"max_station_count": {"type": "integer", "minimum": 1, "maximum": 100}}, "additionalProperties": False}},
-            {"name": "get_network_recommendations", "description": "Return conservative, rule-based, evidence-backed checks. It never recommends edits or claims profit, load, or waiting.", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 100}}, "additionalProperties": False}},
-            {"name": "analyze_network", "description": "Return a compact snapshot-bound intelligence summary with topology, outliers, hubs, recommendations, and limitations.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-            {"name": "detect_network_problems", "description": "Convert deterministic network recommendations into evidence-backed planning problems.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-            {"name": "analyze_problem_impact", "description": "Return verified topology/fleet relations for a planning problem; not demand or financial impact.", "inputSchema": {"type": "object", "properties": {"problem_id": {"type": "string"}}, "required": ["problem_id"], "additionalProperties": False}},
-            {"name": "find_alternative_routes", "description": "Return up to five minimum-hop station/line topology routes, not fastest or physical routes.", "inputSchema": {"type": "object", "properties": {"source_station_id": {"type": "integer"}, "target_station_id": {"type": "integer"}, "max_routes": {"type": "integer", "minimum": 1, "maximum": 5}}, "required": ["source_station_id", "target_station_id"], "additionalProperties": False}},
-            {"name": "find_articulation_stations", "description": "List topology articulation stations derived by Tarjan analysis; not congestion points.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-            {"name": "find_bridge_connections", "description": "List topology bridge connections derived by Tarjan analysis; not service bottlenecks.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-            {"name": "analyze_network_resilience", "description": "Return topology-only resilience metrics and single-point dependencies.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-            {"name": "simulate_station_connection", "description": "Simulate an in-memory virtual connection between existing stations. Never modifies the game.", "inputSchema": {"type": "object", "properties": {"station_a": {"type": "integer"}, "station_b": {"type": "integer"}}, "required": ["station_a", "station_b"], "additionalProperties": False}},
-            {"name": "simulate_line_failure", "description": "Simulate removal of one line from the in-memory topology. Never modifies the game.", "inputSchema": {"type": "object", "properties": {"line_id": {"type": "integer"}}, "required": ["line_id"], "additionalProperties": False}},
-            {"name": "simulate_station_failure", "description": "Simulate removal of one station from the in-memory topology. Never modifies the game.", "inputSchema": {"type": "object", "properties": {"station_id": {"type": "integer"}}, "required": ["station_id"], "additionalProperties": False}},
-            {"name": "simulate_network_scenario", "description": "Apply whitelisted virtual mutations only to an in-memory planning model. Never modifies the game.", "inputSchema": {"type": "object", "properties": {"mutations": {"type": "array", "maxItems": 20}}, "required": ["mutations"], "additionalProperties": False}},
-            {"name": "get_planning_options", "description": "Return conservative hypothetical options generated from detected topology problems; not game commands.", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 100}}, "additionalProperties": False}},
-            {"name": "plan_new_line_candidates", "description": "Rank unserved station-pair topology gaps using observed entities only. Returns read-only Task goal candidates and explicit terminal/physical-route limitations.", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 100}}, "additionalProperties": False}},
-            {"name": "compare_network_scenarios", "description": "Compare 2–10 in-memory hypothetical scenarios on topology dimensions; cost, demand, and profit remain unavailable.", "inputSchema": {"type": "object", "properties": {"scenarios": {"type": "array", "minItems": 2, "maxItems": 10}}, "required": ["scenarios"], "additionalProperties": False}},
-            {"name": "analyze_and_plan_network", "description": "Return a compact decision-support summary: problems, topology dependencies, planning options, and limitations. It never executes changes.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-            {"name": "get_operation_capabilities", "description": "Return the conservative controlled-write registry. Unverified entries cannot execute.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-            {"name": "propose_operation", "description": "Create a non-mutating controlled-operation proposal; it never writes the game.", "inputSchema": {"type": "object", "properties": {"operation_type": {"type": "string"}, "target": {"type": "object"}, "parameters": {"type": "object"}}, "required": ["operation_type", "target", "parameters"], "additionalProperties": False}},
-            {"name": "validate_operation", "description": "Recheck proposal snapshot/entity/capability preconditions without writing.", "inputSchema": {"type": "object", "properties": {"operation_id": {"type": "string"}, "force_refresh": {"type": "boolean"}}, "required": ["operation_id"], "additionalProperties": False}},
-            {"name": "get_operation", "description": "Return one operation lifecycle record.", "inputSchema": {"type": "object", "properties": {"operation_id": {"type": "string"}}, "required": ["operation_id"], "additionalProperties": False}},
-            {"name": "list_recent_operations", "description": "Return up to 50 in-memory operation journal records.", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 50}}, "additionalProperties": False}},
-            {"name": "create_rollback_operation", "description": "Create a non-mutating compensating proposal for a reversible operation.", "inputSchema": {"type": "object", "properties": {"operation_id": {"type": "string"}}, "required": ["operation_id"], "additionalProperties": False}},
-            {"name": "get_task_capabilities", "description": "List goal types and whether each is executable or plan-only.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-            {"name": "create_task", "description": "Create a bounded task; this never executes a game mutation.", "inputSchema": {"type": "object", "properties": {"goal_type": {"type": "string"}, "goal": {"type": "object"}, "policy": {"type": "string", "enum": ["MANUAL", "AUTO_SAFE", "PLAN_ONLY"]}, "max_steps": {"type": "integer", "minimum": 1, "maximum": 10}, "max_replans": {"type": "integer", "minimum": 1, "maximum": 3}, "max_write_operations": {"type": "integer", "minimum": 1, "maximum": 10}}, "required": ["goal_type", "goal"], "additionalProperties": False}},
-            {"name": "plan_task", "description": "Observe and plan one logical next step without writing.", "inputSchema": {"type": "object", "properties": {"task_id": {"type": "string"}}, "required": ["task_id"], "additionalProperties": False}},
-            {"name": "get_task", "description": "Return one task journal and state.", "inputSchema": {"type": "object", "properties": {"task_id": {"type": "string"}}, "required": ["task_id"], "additionalProperties": False}},
-            {"name": "list_tasks", "description": "Return up to 50 recent in-memory tasks.", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 50}}, "additionalProperties": False}},
-            {"name": "get_next_task_step", "description": "Return the current logical next step without executing it.", "inputSchema": {"type": "object", "properties": {"task_id": {"type": "string"}}, "required": ["task_id"], "additionalProperties": False}},
-            {"name": "approve_task_step", "description": "Approve a MANUAL task's single planned write step.", "inputSchema": {"type": "object", "properties": {"task_id": {"type": "string"}}, "required": ["task_id"], "additionalProperties": False}},
-            {"name": "continue_task", "description": "Re-observe and execute at most one approved/AUTO_SAFE operation, then verify it. Never loops.", "inputSchema": {"type": "object", "properties": {"task_id": {"type": "string"}}, "required": ["task_id"], "additionalProperties": False}},
-            {"name": "cancel_task", "description": "Cancel an uncompleted task; it cannot undo a completed mutation.", "inputSchema": {"type": "object", "properties": {"task_id": {"type": "string"}}, "required": ["task_id"], "additionalProperties": False}},
-            {"name": "explain_task", "description": "Return decision evidence, current state, remaining budget, and next permitted action.", "inputSchema": {"type": "object", "properties": {"task_id": {"type": "string"}}, "required": ["task_id"], "additionalProperties": False}},
-            {"name": "find_low_load_vehicles", "description": "Returns low-load vehicles only when current-load telemetry is available; otherwise explicitly reports metric unavailability.", "inputSchema": {"type": "object", "properties": {"occupancy_threshold": {"type": "number", "minimum": 0, "maximum": 1}}, "additionalProperties": False}},
-            {"name": "find_high_waiting_stations", "description": "Returns high-waiting stations only when waiting telemetry is available; otherwise explicitly reports metric unavailability.", "inputSchema": {"type": "object", "properties": {"waiting_threshold": {"type": "integer", "minimum": 0}}, "additionalProperties": False}},
-            {"name": "find_stations_without_lines", "description": "List station groups with no resolved line stops.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
-        ]
-        if isinstance(bridge, MockBridge):
-            # Retain the old surface only inside unit fixtures while its domain
-            # implementations are migrated. No production transport uses this.
-            tools.extend(_TRAIN_CONTROL_TOOLS)
-            listed_tools = tools
-        else:
-            listed_tools = [_RUNTIME_STATUS_TOOL, *_TRAIN_CONTROL_TOOLS, *WORLD_TOOL_DEFINITIONS]
+        listed_tools = [_RUNTIME_STATUS_TOOL, *_TRAIN_CONTROL_TOOLS, *WORLD_TOOL_DEFINITIONS, *STOP_CONTROL_TOOLS, *DEMAND_TOOLS, *MOVEMENT_TOOLS]
         return {"jsonrpc": "2.0", "id": request_id, "result": {"tools": _standardize_tools(listed_tools)}}
     if method == "resources/list":
         if not isinstance(bridge, MockBridge):
@@ -409,6 +348,30 @@ def _handle(message: dict[str, Any], bridge: BridgeClient | MockBridge) -> dict[
             name = params.get("name")
             if not isinstance(bridge, MockBridge) and name not in _CURRENT_NATIVE_TOOL_NAMES:
                 return _error(-32601, f"TOOL_ISOLATED: {name} has not been migrated to Loader/Controller V2", request_id)
+            if name in MOVEMENT_TOOL_NAMES:
+                try:
+                    value = _movement_service.call(name, params.get('arguments', {}))
+                except ValueError as exc:
+                    return _error(-32602, str(exc), request_id)
+                except (OSError, KeyError, RuntimeError) as exc:
+                    return _error(-32001, str(exc), request_id)
+                return {"jsonrpc": "2.0", "id": request_id, "result": _tool_result(value)}
+            if not isinstance(bridge, MockBridge) and name in DEMAND_TOOL_NAMES:
+                try:
+                    value = _demand_service.call(name, params.get('arguments', {}))
+                except ValueError as exc:
+                    return _error(-32602, str(exc), request_id)
+                except (OSError, KeyError, RuntimeError) as exc:
+                    return _error(-32001, str(exc), request_id)
+                return {"jsonrpc": "2.0", "id": request_id, "result": _tool_result(value)}
+            if name in STOP_CONTROL_OPERATIONS:
+                try:
+                    value = _stop_control_service.call(name, params.get('arguments', {}))
+                except ValueError as exc:
+                    return _error(-32602, str(exc), request_id)
+                except (OSError, KeyError, RuntimeError) as exc:
+                    return _error(-32001, str(exc), request_id)
+                return {"jsonrpc": "2.0", "id": request_id, "result": _tool_result(value)}
             if not isinstance(bridge, MockBridge) and name in WORLD_TOOL_NAMES:
                 arguments = params.get("arguments", {})
                 if not isinstance(arguments, dict):
@@ -465,6 +428,12 @@ def _handle(message: dict[str, Any], bridge: BridgeClient | MockBridge) -> dict[
                         "result": _tool_result(_train_control_service.active_controls())}
             if name == "get_bridge_status":
                 status = _train_control_service.runtime_status()
+                try:
+                    lua = _stop_control_service.client.heartbeat()
+                    status['lua_commands'] = {key: lua.get(key) for key in (
+                        'lua_command_protocol', 'session_id', 'allow_write_operations', 'allowed_operations')}
+                except (OSError, KeyError, ValueError, RuntimeError) as exc:
+                    status['lua_commands'] = {'connected': False, 'reason': str(exc)}
                 try:
                     status["world_data"] = _loader_world_repository.status()
                 except LoaderWorldError as exc:

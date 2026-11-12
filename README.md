@@ -46,7 +46,7 @@ HTTP MCP 采用 Streamable HTTP，可供多个本机客户端连接同一个服�
 
 ## 能做什么
 
-当前生产 MCP 暴露 **15 个工具**，数据读取走 Loader 共享内存，控制走 Controller V2 命令通道。
+当前生产 MCP 暴露 **32 个工具**。数据和 Lua 命令回执读取 Loader 共享内存，限速与强制移动走 Controller；停站策略和官方停车、倒车命令走 Lua 执行器。
 上方图片保留项目已有功能与历史实验展示，不代表其中每项能力均已迁入当前 MCP。
 
 | 工具 | 已实现功能 |
@@ -62,21 +62,61 @@ HTTP MCP 采用 Streamable HTTP，可供多个本机客户端连接同一个服�
 | `get_stations` / `get_station` | 站组列表与单个站组 |
 | `get_lines` / `get_line` | 线路列表与单条线路 |
 | `get_rail_network` | 完整铁路网摘要和分区分页数据 |
+| `get_full_network_topology` | 车站（含咽喉区）、道岔、信号机及带长度的有向拓扑边 |
+| `get_train_routes` | 按 `line_id` 导出所属列车、停站顺序、主选/备选站台、装载模式、等待时间，以及各列车已采路径窗口的拓扑映射 |
+| `set_line_stop_policy` | 修改指定线路一次停站的装载方式及最小/最大等待时间 |
+| `hold_train_at_station` / `release_train_from_hold` | 对已经在站内等待的列车扣停/放行；扣停10–600秒后自动解除 |
+| `stop_train` / `resume_train` | 官方停车标志控制；临时停车5–120秒后自动解除 |
+| `reverse_train` / `get_train_direction` | 官方倒车操作与方向状态查询 |
+| `move_train_distance` / `move_train_route` | 沿当前路径或指定原生路径强制移动至目标位置，属于实验性控制 |
+| `release_train_movement` / `get_train_movement` / `get_train_movement_context` | 释放强制移动、查询执行状态及当前路径上下文 |
+| `get_cargo_types` | 当前游戏的货物类型ID、资源键及显示名称 |
+| `get_line_demand` | 线路旅客/货物的等待量、在车量、等待时间、起讫停站和货物分类 |
+| `get_station_waiting_state` | 车站各线路的候车人数、待运货物及分类，可指定 `line_id` |
 
 实体列表支持 `offset`、`limit`、`name_contains`，单个实体使用 `entity_id`。
 铁路网通过 `section` 选择 `summary`、`nodes`、`edges`、`stations`、`lines`、`depots`，
 按返回的 `next_offset` 读取后续页。完整路网在这里指铁路网，不包含完整道路网络。
 
+`get_train_routes` 的 `vehicle_ids` 可关联列车遥测；可选 `vehicle_id` 筛选同线路中的单列车。
+`topology_id` 用于匹配拓扑版本，实际路径中的 `edge_id`、`node_id` 引用该拓扑。
+停站顺序循环执行；站台号按子车站的终端索引加一导出，并保留原始索引。
+线路配置和路径分别携带采样时间。实际轨道走向只覆盖已采窗口，未解析部分明确标记，
+`full_line_track_path_available=false` 表示尚不提供全线完整轨道路径。
+
+新增五个停站控制工具默认 `dry_run=true`，仅预览。实际执行需设置 `dry_run=false`，
+并提供 `confirmation="<工具名大写>:<command_id>"` 和 `reason`，同时通过 Mod 的写权限开关及操作白名单。
+停站配置使用 `line_id + stop_index`（从0起始）定位，装载模式为 `LOAD_IF_AVAILABLE`、`FULL_LOAD_ANY`、`FULL_LOAD_ALL`。
+列车控制使用 `display_name`，名称重复时补充 `vehicle_id`。所有命令回读确认，
+`ACCEPTED_UNVERIFIED` 和 `OUTCOME_UNKNOWN` 不代表效果已验证；停车标志生效也不代表列车速度已经为零。
+命令回执和同一 `command_id` 的防重记录保存在 `var/lua-control-commands/`，重试不会重复下发。
+Lua 请求通过 Loader 的共享内存命令槽发送，二进制头包含命令号、请求序列、长度和截止时间；
+Loader 校验后在游戏更新回调中交给 Lua 执行。回执从 `command-response.json` 固定共享内存通道读取。
+此通道不读写 `bridge/command.json`，也不回退到命令文件或响应文件。
+需要 Loader ABI 3 和 Lua 命令协议2；旧 Loader 常驻期间须重启游戏后加载新版。发布默认写权限仍为关闭。
+
 列车遥测包括显示名称、所属线路、长度、当前速度、技术最高速度、轨道/命令限速、
 加速度、载客与货量、轨道边位置及前方路径摘要。采样目标为 5 Hz，实际频率取决于游戏更新回调。
-未验证的数值返回 `null`，部分产业类型等字段仍可能为 `UNKNOWN`；世界目录是低频快照，读取时应结合时间和采集状态。
+高频列车数据由 Controller 在引擎更新回调中直接采集，经 Loader 写入原有二进制和 JSON 通道；Lua 保留低频名称和按需静态资源采集。
+127列列车、2209节车体的测试存档中，原 Lua 三个高频阶段平均 CPU 耗时合计约523ms；迁移后原生采集加共享内存发布的墙钟耗时中位约31.3ms，20秒实测约4.94Hz。两项耗时使用不同计时口径，详见[原生遥测说明](docs/native-train-telemetry.md)。
+未验证的数值通常返回 `null`；二进制载荷计数沿用 v1 协议，无法确认的车厢旅客数以0配合未验证标志表示，不能当作已确认无人。部分产业类型等字段仍可能为 `UNKNOWN`。
+世界目录、路网和信号资产在存档加载后发布一次，后续按需刷新；采集或共享内存发布失败会退避重试。
+换档会生成新的会话标识并重建目录、路网和信号批次；Python拒绝跨会话数据及失败采集器的空结果，同会话静态资产不因年龄自动失效。
+线路路径与列车动态接口提供 `session_id` / `topology_id`，调用方应按同一拓扑版本关联。
 
-旧文件 Bridge 的候车人数、线路需求、排图、网络分析、模拟、购买车辆与 Task/Operation
+客货需求按查询采集，复用最长2秒的同会话缓存，`force_refresh=true` 可强制重采。
+每条线路、每类实体默认扫描上限20000，可用 `maximum_entities` 设置100–50000。
+站点连接线路和需求的停站索引取自实时组件，聚合前后核对线路走向；多个线路依次采集，返回采样时间范围，非原子快照。
+必须检查 `quality`：截断数量是已扫描部分，缺失返回 `null` 或错误，归属不明不会伪装为完整的0。
+站内统计仅覆盖已经分配给线路、且OD起点可归属本站的实体，不代表未分配线路的完整车站库存。
+旅客单位为人；货物暂为 `SIM_CARGO` 实体数，物理单位未实机核验。
+
+旧文件 Bridge 的排图、网络分析、模拟、购买车辆与 Task/Operation
 流程尚未完成迁移，已从生产 MCP 隔离。当前也不暴露旧 `tpf2://` resources。
 
 ## 原生通信与控制
 
-Lua 在游戏内加载 `tpf2_loader.dll`，将采集结果交给 Loader 的双缓冲共享内存。
+Lua 在游戏内加载 `tpf2_loader.dll`，静态采集结果及 Controller 的原生动态采集结果通过 Loader 的双缓冲共享内存导出。
 Loader 通过 `LoadLibrary` 加载 Controller，并监听热重载事件。
 Python 使用 `ControllerCommandClient`，通过共享内存命令队列与内核事件下发控制。
 源码工程名为 `tpf2_controller`，当前 Mod 包中的 DLL 名为 `tpf2_control.dll`。

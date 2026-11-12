@@ -1,5 +1,6 @@
 local config = require "tpf2_mcp/config"
 local json = require "tpf2_mcp/json"
+local common = require "tpf2_mcp/collectors/common"
 local town_collector = require "tpf2_mcp/collectors/town"
 local industry_collector = require "tpf2_mcp/collectors/industry"
 local station_collector = require "tpf2_mcp/collectors/station"
@@ -28,14 +29,18 @@ local cached_at = 0
 local cached_station_geometry = nil
 local cached_rail_network = nil
 
+function M.reset_session()
+    cached_snapshot, cached_at = nil, 0
+    cached_station_geometry, cached_rail_network = nil, nil
+end
+
 local function now()
     return os and os.time and os.time() or 0
 end
 
 function M.snapshot(sequence, force_refresh)
     local current_time = now()
-    local refresh_interval = tonumber(config.snapshot_refresh_interval_seconds) or 2
-    if not force_refresh and cached_snapshot and current_time - cached_at < refresh_interval then
+    if not force_refresh and cached_snapshot then
         return cached_snapshot
     end
     local game = { status = "available", api_status = "runtime_verified" }
@@ -63,6 +68,7 @@ function M.snapshot(sequence, force_refresh)
         sequence = sequence,
         timestamp = current_time,
         metadata = {
+            refresh_policy = "ON_DEMAND_ASSETS",
             session_id = operational_telemetry.session_id(),
             sequence = sequence,
             timestamp = current_time,
@@ -167,8 +173,44 @@ function M.operational_telemetry(section)
 end
 
 function M.line_demand(line_id, maximum)
+    local started, started_at = common.clock(), now()
     local ok, value = pcall(line_demand.collect, line_id, maximum)
-    return ok and value or { status = "ERROR", line_id = line_id, error = tostring(value) }
+    if not ok then value = { status = "ERROR", line_id = line_id, error = tostring(value) } end
+    value.session_id, value.generated_at = operational_telemetry.session_id(), now()
+    -- Read the stop vector in the same engine callback as the demand. A
+    -- 30-second catalog cannot safely resolve OD indices after a route edit.
+    local errors = {}
+    local line = common.safe_get_component(line_id, "LINE", errors)
+    local metadata = { line_id = line_id, stops = {}, errors = errors }
+    metadata.display_name = common.name_from_component(common.safe_get_component(line_id, "NAME", errors))
+    for offset, stop in ipairs(common.sequence_values(common.field(line, "stops"))) do
+        metadata.stops[#metadata.stops + 1] = {
+            stop_index = offset - 1,
+            station_id = common.entity_id(common.field(stop, "stationGroup")),
+            station_index = common.field(stop, "station"),
+            terminal_index = common.field(stop, "terminal"),
+        }
+    end
+    metadata.available = line ~= nil and #errors == 0
+    value.line_metadata = metadata
+    value.collection_started_at, value.duration_ms = started_at, (common.clock() - started) * 1000
+    return value
+end
+
+function M.station_demand_lines(station_id)
+    local errors = {}
+    local station = common.safe_get_component(station_id, "STATION_GROUP", errors)
+    if station == nil or #errors > 0 then return { status = "ERROR", error = "STATION_NOT_FOUND" } end
+    local lines, status = line_collector.collect()
+    if status.ok ~= true then return { status = "ERROR", error = "LINE_COLLECTION_INCOMPLETE", collector_status = status } end
+    local connected = {}
+    for _, line in ipairs(lines) do
+        for _, stop in ipairs(line.stops or {}) do
+            if stop.station_id == station_id then connected[#connected + 1] = line; break end
+        end
+    end
+    return { session_id = operational_telemetry.session_id(), generated_at = now(),
+        station_id = station_id, lines = connected }
 end
 
 function M.vehicle_dispatch_state(vehicle_id, maximum)

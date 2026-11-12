@@ -2,6 +2,7 @@
 #include "tpf2.h"
 #include "native_ipc.h"
 #include "native_command_ipc.h"
+#include "train_motion.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -1005,7 +1006,7 @@ static uint32_t dispatch_command(const Tpf2CommandSlot *command, char *detail, s
         return TPF2_COMMAND_OK;
     case TPF2_CMD_GET_CAPABILITIES:
         if (command->payload_size) return TPF2_COMMAND_INVALID_PAYLOAD;
-        strncpy_s(detail, detail_size, "v2;transaction;speed;station;routing;path", _TRUNCATE);
+        strncpy_s(detail, detail_size, "v2;transaction;speed;station;routing;path;train_movement_experimental;movement_return_check", _TRUNCATE);
         return TPF2_COMMAND_OK;
     case TPF2_CMD_BEGIN_TRANSACTION: return begin_transaction(command);
     case TPF2_CMD_COMMIT_TRANSACTION: return commit_transaction(command);
@@ -1014,6 +1015,11 @@ static uint32_t dispatch_command(const Tpf2CommandSlot *command, char *detail, s
     case TPF2_CMD_UPSERT_STATION_RULE: return upsert_station_rule(command);
     case TPF2_CMD_UPSERT_ROUTING_RULE: return upsert_routing_rule(command);
     case TPF2_CMD_UPSERT_PATH_RULE: return upsert_path_rule(command);
+    case TPF2_CMD_MOVE_TRAIN_DISTANCE:
+    case TPF2_CMD_MOVE_TRAIN_ROUTE:
+    case TPF2_CMD_RELEASE_TRAIN_MOVEMENT:
+    case TPF2_CMD_GET_TRAIN_MOVEMENT:
+        return train_motion_command(command, detail, detail_size);
     case TPF2_CMD_REMOVE_SPEED_RULE:
     case TPF2_CMD_REMOVE_STATION_RULE:
     case TPF2_CMD_REMOVE_ROUTING_RULE:
@@ -1154,6 +1160,8 @@ unsigned char station_hook_c(void *context, uint32_t *vehicle, uint32_t *next_st
         return original_station(context, vehicle, next_station_entity, next_station, sim_system,
                                 flag6, arg7, arg8, assigned_only, station_terminal, deferred, flag12);
     StationRule selected;
+    if (readable(vehicle, sizeof(uint32_t)) && train_motion_blocks_station_path(context, *vehicle))
+        return 1; // This train's temporary route is owned by train_motion until release.
     int applies = 0, selected_index = -1;
     int64_t now = (int64_t)time(NULL);
     if (readable(vehicle, sizeof(uint32_t)))
@@ -1280,6 +1288,7 @@ extern "C" float speed_hook_c(void *engine, int component, void *path_vector, in
     if (dtmgr.is_draining())
         return original_speed(engine, component, path_vector, first, last, factor, network, filter0, filter1);
     float native_limit = original_speed(engine, component, path_vector, first, last, factor, network, filter0, filter1);
+    native_limit = train_motion_speed_limit(path_vector, native_limit);
     InterlockedIncrement64(&speed_calls);
     uint32_t candidate = readable((void *)vehicle_pointer, sizeof(uint32_t)) ? *(uint32_t *)vehicle_pointer : 0;
     InterlockedExchange(&last_candidate, (LONG)candidate);
@@ -1497,6 +1506,13 @@ static int install_hooks(void)
             return 0;
         }
     }
+    if (!install_train_motion_hooks(path_vehicle_tls))
+    {
+        const int cleaned = dtmgr.uninstall_all_detours();
+        InterlockedExchange(&controller_safe_to_unload, cleaned ? 1 : 0);
+        write_status("DISABLED", cleaned ? "TRAIN_MOTION_SIGNATURE_MISMATCH" : "PARTIAL_HOOK_CLEANUP_FAILED");
+        return 0;
+    }
     write_status("ACTIVE", "VERSION_LOCKED_STATION_AND_PATH_CONTROL_HOOKS");
     return 1;
 }
@@ -1625,6 +1641,9 @@ VOID start_tpf2(HMODULE self)
 
 extern "C" __declspec(dllexport) BOOL tpf2_controller_prepare_unload(DWORD timeout_ms)
 {
+    // Restore game-owned paths before removing the update hook that performs it.
+    if (!prepare_train_motion_unload(timeout_ms ? timeout_ms : 15000))
+        return FALSE;
     AcquireSRWLockShared(&lifecycle_lock);
     HANDLE event = shutdown_event;
     HANDLE thread = controller_thread;

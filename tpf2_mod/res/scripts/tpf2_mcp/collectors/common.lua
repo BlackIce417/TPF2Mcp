@@ -4,6 +4,12 @@ local M = {}
 local function read_field(value, key) return value[key] end
 local function read_length(value) return #value end
 local cached_component_registry, component_types = nil, {}
+local frame_components, frame_bounds = nil, nil
+local missing_component = {}
+
+-- Engine userdata must never survive a simulation callback in a read cache.
+function M.begin_read_frame() frame_components, frame_bounds = {}, {} end
+function M.end_read_frame() frame_components, frame_bounds = nil, nil end
 
 function M.clock()
     if os and type(os.clock) == "function" then
@@ -14,6 +20,7 @@ function M.clock()
 end
 
 function M.entity_id(entity)
+    if type(entity) == "number" then return entity end
     return tonumber(tostring(entity)) or tostring(entity)
 end
 
@@ -37,12 +44,45 @@ function M.safe_get_component(entity, component_name, errors)
         errors[#errors + 1] = { entity_id = M.entity_id(entity), component = component_name, error = type_error }
         return nil
     end
+    local key = frame_components and M.entity_id(entity)
+    local cached = key and frame_components[key]
+    if cached and cached[component_name] ~= nil then
+        local value = cached[component_name]
+        if value == missing_component then return nil end
+        return value
+    end
     local ok, value = pcall(api.engine.getComponent, entity, component_type)
     if not ok then
         errors[#errors + 1] = { entity_id = M.entity_id(entity), component = component_name, error = tostring(value) }
         return nil
     end
+    if key then
+        cached = cached or {}; frame_components[key] = cached
+        cached[component_name] = value == nil and missing_component or value
+    end
     return value
+end
+
+function M.bounds_for(entity, errors)
+    if entity == nil then return nil, nil end
+    local key = frame_bounds and M.entity_id(entity)
+    local cached = key and frame_bounds[key]
+    if cached then return cached[1], cached[2] end
+    local volume = M.safe_get_component(entity, "BOUNDING_VOLUME", errors)
+    local box = M.field(volume, "bbox")
+    local function vec(value)
+        local x, y, z = M.field(value, "x"), M.field(value, "y"), M.field(value, "z")
+        if type(x) ~= "number" or type(y) ~= "number" then return nil end
+        return { x = x, y = y, z = type(z) == "number" and z or 0 }
+    end
+    local minimum = vec(M.field(box, "min")) or vec(M.field(box, "bbMin"))
+    local maximum = vec(M.field(box, "max")) or vec(M.field(box, "bbMax"))
+    if not minimum or not maximum then return nil, nil end
+    local center = { x = (minimum.x + maximum.x) * .5, y = (minimum.y + maximum.y) * .5,
+                     z = (minimum.z + maximum.z) * .5 }
+    local bounds = { min = minimum, max = maximum }
+    if key then frame_bounds[key] = {center, bounds} end
+    return center, bounds
 end
 
 function M.safe_for_each_entity(component_name, callback, errors)

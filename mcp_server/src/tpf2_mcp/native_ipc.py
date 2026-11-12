@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import ctypes
+import json
+import math
 import os
 import struct
 import threading
@@ -64,6 +66,12 @@ CMD_CLEAR_ROUTING_RULES = 0x0303
 CMD_UPSERT_PATH_RULE = 0x0401
 CMD_REMOVE_PATH_RULE = 0x0402
 CMD_CLEAR_PATH_RULES = 0x0403
+CMD_MOVE_TRAIN_DISTANCE = 0x0501
+CMD_MOVE_TRAIN_ROUTE = 0x0502
+CMD_RELEASE_TRAIN_MOVEMENT = 0x0503
+CMD_GET_TRAIN_MOVEMENT = 0x0504
+MOVEMENT_ROUTE_CAPACITY = 512
+MOVEMENT_REQUIRE_RESUMABLE_ROUTE = 1
 
 COMMAND_OK = 0
 WAIT_OBJECT_0 = 0
@@ -72,6 +80,52 @@ INFINITE = 0xFFFFFFFF
 SYNCHRONIZE = 0x00100000
 _command_id_lock = threading.Lock()
 _last_command_id = 0
+
+
+def _movement_integer(name: str, value: int, low: int, high: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+        raise ValueError(f"{name} must be an integer from {low} to {high}")
+    return value
+
+
+def _movement_number(name: str, value: float, low: float, high: float) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not low <= value <= high:
+        raise ValueError(f"{name} must be finite and from {low} to {high}")
+    return float(value)
+
+
+def _movement_common(movement_id: int, vehicle_id: int, speed_kmh: float,
+                     expires_in_seconds: int) -> tuple[int, int, float, int]:
+    return (_movement_integer("movement_id", movement_id, 1, (1 << 64) - 1),
+            _movement_integer("vehicle_id", vehicle_id, 1, 0x3fffffff),
+            _movement_number("speed_kmh", speed_kmh, 0.001, 500.0) / 3.6,
+            _movement_integer("expires_in_seconds", expires_in_seconds, 5, 600))
+
+
+def pack_train_movement_distance(movement_id: int, vehicle_id: int, *, speed_kmh: float,
+                                 distance_m: float, expires_in_seconds: int = 120) -> bytes:
+    mid, vehicle, speed, expiry = _movement_common(movement_id, vehicle_id, speed_kmh, expires_in_seconds)
+    distance = _movement_number("distance_m", distance_m, 0.001, 100000.0)
+    return struct.pack("<QIffI", mid, vehicle, speed, distance, expiry)
+
+
+def pack_train_movement_route(movement_id: int, vehicle_id: int, *, speed_kmh: float,
+                              edges: list[dict[str, int]], target_index: int, target_offset_m: float,
+                              expires_in_seconds: int = 120) -> bytes:
+    mid, vehicle, speed, expiry = _movement_common(movement_id, vehicle_id, speed_kmh, expires_in_seconds)
+    if not isinstance(edges, list) or not 1 <= len(edges) <= MOVEMENT_ROUTE_CAPACITY:
+        raise ValueError(f"edges must contain 1 to {MOVEMENT_ROUTE_CAPACITY} native directed edges")
+    target = _movement_integer("target_index", target_index, 0, len(edges) - 1)
+    offset = _movement_number("target_offset_m", target_offset_m, 0.0, 100000.0)
+    payload = bytearray(struct.pack("<QIfIIfI", mid, vehicle, speed, expiry, target, offset, len(edges)))
+    for edge in edges:
+        if not isinstance(edge, dict) or set(edge) != {"entity", "index", "direction"}:
+            raise ValueError("each native edge must contain entity, index and direction")
+        payload.extend(struct.pack("<IiI", _movement_integer("entity", edge["entity"], 1, 0x3fffffff),
+            _movement_integer("index", edge["index"], 0, 0x7fffffff),
+            _movement_integer("direction", edge["direction"], 0, 1)))
+    payload.extend(bytes(12 * (MOVEMENT_ROUTE_CAPACITY - len(edges))))
+    return bytes(payload)
 
 
 def _kernel32():
@@ -222,10 +276,11 @@ class ControllerCommandClient:
 
     def send(self, opcode: int, payload: bytes = b"", *, transaction_id: int = 0,
              cmd_id: int | None = None, timeout: float | None = None,
-             require_ok: bool = False) -> dict[str, Any]:
+             require_ok: bool = False, flags: int = 0) -> dict[str, Any]:
         """Publish one command and synchronously receive its cmd_id-matched reply."""
         if not isinstance(payload, bytes) or len(payload) > COMMAND_PAYLOAD_CAPACITY:
             raise ValueError("invalid command payload")
+        _movement_integer("flags", flags, 0, 0xffffffff)
         effective_timeout = self.timeout if timeout is None else float(timeout)
         if effective_timeout <= 0:
             raise ValueError("timeout must be positive")
@@ -258,7 +313,7 @@ class ControllerCommandClient:
                 raise BufferError("Controller command ring is full")
             slot = view + COMMAND_HEADER_SIZE + (write % COMMAND_RING_CAPACITY) * COMMAND_SLOT_SIZE
             header = struct.pack("<QIIQII", command_id, int(opcode), len(payload),
-                                 int(transaction_id), 0, 0)
+                                 int(transaction_id), flags, 0)
             ctypes.memmove(slot, header, len(header))
             if payload:
                 ctypes.memmove(slot + 32, payload, len(payload))
@@ -308,6 +363,87 @@ class ControllerCommandClient:
 
     def get_capabilities(self) -> dict[str, Any]:
         return self.send(CMD_GET_CAPABILITIES, require_ok=True)
+
+    @staticmethod
+    def _movement_reply(reply: dict[str, Any]) -> dict[str, Any]:
+        """A successful submission is PENDING, not proof that a train has moved."""
+        result = dict(reply)
+        try:
+            result["movement"] = json.loads(reply["detail"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError("Controller returned an invalid movement status") from exc
+        return result
+
+    def move_train_distance(self, movement_id: int, vehicle_id: int, *, speed_kmh: float,
+                            distance_m: float, expires_in_seconds: int = 120) -> dict[str, Any]:
+        """Move an en-route rail train's centre forward on its current native path, then hold.
+
+        Native speed limits and reservations remain in force. Query movement status
+        until HELD; release explicitly, or the watchdog releases at expiry.
+        """
+        payload = pack_train_movement_distance(movement_id, vehicle_id, speed_kmh=speed_kmh,
+            distance_m=distance_m, expires_in_seconds=expires_in_seconds)
+        return self._movement_reply(self.send(CMD_MOVE_TRAIN_DISTANCE, payload, require_ok=True))
+
+    def move_train_route(self, movement_id: int, vehicle_id: int, *, speed_kmh: float,
+                         edges: list[dict[str, int]], target_index: int, target_offset_m: float,
+                         expires_in_seconds: int = 120, require_resumable_route: bool = True) -> dict[str, Any]:
+        """Override with ordered native {entity,index,direction} edges, then hold at the centre target.
+
+        Start at the current centre edge and preserve the track under the whole
+        train. Include continuation track beyond the target for its front half;
+        the last edge is a native stopping guard. Simplified topology IDs are not
+        accepted as engine edges. Release recomputes the normal line path.
+        By default, preview normal-line reachability from the proposed target
+        BEFORE moving. Opting out permits an unrecoverable target and requires
+        the caller to arrange recovery; a failed restore keeps the train held.
+        """
+        payload = pack_train_movement_route(movement_id, vehicle_id, speed_kmh=speed_kmh,
+            edges=edges, target_index=target_index, target_offset_m=target_offset_m,
+            expires_in_seconds=expires_in_seconds)
+        if not isinstance(require_resumable_route, bool):
+            raise ValueError("require_resumable_route must be boolean")
+        if require_resumable_route and 'movement_return_check' not in self.get_capabilities()['detail'].split(';'):
+            raise RuntimeError("Controller update required for movement return-path validation")
+        return self._movement_reply(self.send(CMD_MOVE_TRAIN_ROUTE, payload, require_ok=True,
+            flags=MOVEMENT_REQUIRE_RESUMABLE_ROUTE if require_resumable_route else 0))
+
+    def get_train_movement(self, movement_id: int) -> dict[str, Any]:
+        return self._movement_reply(self.send(CMD_GET_TRAIN_MOVEMENT,
+            struct.pack("<Q", _movement_integer("movement_id", movement_id, 1, (1 << 64) - 1)), require_ok=True))
+
+    def release_train_movement(self, movement_id: int) -> dict[str, Any]:
+        """Queue release; wait for RELEASED before treating normal routing as restored."""
+        return self._movement_reply(self.send(CMD_RELEASE_TRAIN_MOVEMENT,
+            struct.pack("<Q", _movement_integer("movement_id", movement_id, 1, (1 << 64) - 1)), require_ok=True))
+
+    def reverse_train(self, vehicle_id: int, *, operation_id: str | None = None,
+                      lua_client=None, expected_session: str | None = None,
+                      precondition: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Stop, then issue the game's official reverseVehicle on its Lua callback thread.
+
+        Leaves userStopped set. Wait for REVERSED, resume, refresh the route,
+        then submit movement; manual stop otherwise prevents new reservations.
+        """
+        from .lua_commands import LoaderLuaCommandClient
+        _movement_integer("vehicle_id", vehicle_id, 1, 0x3fffffff)
+        operation_id = operation_id or f"reverse-{_next_command_id()}"
+        if not isinstance(operation_id, str) or not 1 <= len(operation_id) <= 128:
+            raise ValueError("operation_id must contain 1 to 128 characters")
+        client = lua_client or LoaderLuaCommandClient.for_simulation()
+        state = client.call('get_control_state', {'vehicle_id':vehicle_id}, expected_session=expected_session)
+        if state.get('direction_control_protocol') != 1:
+            raise RuntimeError('Mod runtime update required for reverse control')
+        envelope = {'operation_type':'STOP_VEHICLE', 'operation_id':operation_id,
+            'target':{'vehicle_id':vehicle_id},
+            'parameters':{'max_stop_seconds':120, 'reverse_after_stop':True}}
+        if precondition is not None: envelope['_control_precondition'] = precondition
+        return client.call('execute_operation', envelope, expected_session=expected_session)
+
+    def get_train_direction(self, vehicle_id: int) -> dict[str, Any] | None:
+        from .lua_commands import LoaderLuaCommandClient
+        value = LoaderLuaCommandClient.for_simulation().call('get_control_state', {'vehicle_id':vehicle_id})
+        return value.get('vehicle', {}).get('direction_control')
 
     def upsert_speed_rule(self, rule_id: int, item: dict[str, Any], *, transaction_id: int = 0) -> dict[str, Any]:
         return self.send(CMD_UPSERT_SPEED_RULE, pack_speed_rule(rule_id, item),

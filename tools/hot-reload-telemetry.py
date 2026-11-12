@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import sys
 import time
 import uuid
 
@@ -35,6 +36,23 @@ def mod_root(path):
     return root
 
 
+def heartbeat_for(root):
+    """Use the active Loader heartbeat when it belongs to this exact Mod."""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'mcp_server'/'src'))
+        from tpf2_mcp.loader_telemetry import read_json_channel
+        from tpf2_mcp.config import game_dir
+        value = read_json_channel('heartbeat.json')
+        bridge = Path(value.get('bridge_dir', ''))
+        if not bridge.is_absolute():
+            bridge = game_dir()/bridge
+        if bridge.resolve() == (root/'bridge').resolve():
+            return value
+    except (ImportError, OSError, KeyError, ValueError, RuntimeError, AttributeError):
+        pass
+    return read_json(root/'bridge'/'heartbeat.json')
+
+
 def source_scripts(path):
     root = Path(path).resolve(strict=True)
     if (root / "tpf2_mod").is_dir():
@@ -48,7 +66,7 @@ def source_scripts(path):
 def publish(target, source, *, clock=time.time):
     root = mod_root(target)
     bridge = inside(root, root / "bridge")
-    heartbeat = read_json(bridge / "heartbeat.json")
+    heartbeat = heartbeat_for(root)
     support = heartbeat.get("hot_reload") or {}
     if support.get("protocol_version") != 1:
         raise ValueError("Bootstrap is not loaded. Install the bootstrap and reload the save once; "
@@ -86,7 +104,7 @@ def receipt(target, revision):
     root = mod_root(target)
     return next((value for value in (
         read_json(root / "bridge/hot-reload/status.json"),
-        read_json(root / "bridge/heartbeat.json").get("hot_reload") or {},
+        heartbeat_for(root).get("hot_reload") or {},
     ) if value.get("revision") == revision), {})
 
 

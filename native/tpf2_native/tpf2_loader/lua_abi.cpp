@@ -76,6 +76,20 @@ bool number_argument(lua_State* state, int index, double& result) noexcept
     return result == result;
 }
 
+int return_numbers(lua_State* state, const double* values, std::size_t count) noexcept
+{
+    if (!state || !values || !count || count > 8) return 0;
+    auto* raw = reinterpret_cast<LuaStatePrefix*>(state);
+    if (!readable(raw, sizeof(*raw)) || !readable(raw->call_info, sizeof(CallInfoPrefix)) ||
+        raw->top > raw->call_info->top || static_cast<std::size_t>(raw->call_info->top - raw->top) < count ||
+        !readable(raw->top, sizeof(TValue) * count)) return 0;
+    for (std::size_t i = 0; i < count; ++i) {
+        raw->top->value.number = values[i]; raw->top->type = kLuaTypeNumber; raw->top->padding = 0;
+        ++raw->top;
+    }
+    return static_cast<int>(count);
+}
+
 int return_boolean(lua_State* state, bool result) noexcept
 {
     if (state == nullptr) return 0;

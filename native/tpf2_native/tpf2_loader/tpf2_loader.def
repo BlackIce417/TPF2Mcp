@@ -1,10 +1,18 @@
 LIBRARY "tpf2_loader"
 EXPORTS
+    tpf2_loader_lua_native_telemetry_tick
+    tpf2_loader_native_telemetry_context
+    tpf2_loader_native_telemetry_seed
+    tpf2_loader_native_telemetry_publish
+    tpf2_loader_native_telemetry_request_metadata
     luaopen_tpf2_loader
     tpf2_loader_lua_start
     tpf2_loader_lua_publish_json
     tpf2_loader_lua_publish_binary
     tpf2_loader_lua_network_refresh_due
+    tpf2_loader_lua_command_poll
+    tpf2_loader_lua_command_read
+    tpf2_loader_lua_command_finish
     tpf2_loader_abi_version
     tpf2_loader_train_protocol_version
     tpf2_loader_train_frame_header_size

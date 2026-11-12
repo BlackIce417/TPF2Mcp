@@ -116,6 +116,28 @@ bool replace_mapping(Channel& channel, std::uint32_t capacity, std::size_t entry
 
 namespace tpf2::loader::shared_bus {
 
+std::size_t copy(const char* key, char* output, std::size_t capacity, std::uint64_t* revision) noexcept
+{
+    if (!key || !revision) return 0;
+    AcquireSRWLockShared(&g_lock);
+    std::size_t size = 0;
+    for (std::size_t i = 0; i < g_channels.size(); ++i) {
+        auto& channel = *g_channels[i];
+        if (channel.key != key || !channel.view) continue;
+        auto current = g_control->entries[i].publish_count;
+        if (current == *revision) break;
+        auto buffer = channel.view->active_buffer;
+        size = channel.view->length[buffer];
+        if (output && size <= capacity) {
+            std::memcpy(output, reinterpret_cast<char*>(channel.view + 1) + buffer * channel.capacity, size);
+            *revision = current;
+        }
+        break;
+    }
+    ReleaseSRWLockShared(&g_lock);
+    return size;
+}
+
 bool initialize() noexcept
 {
     AcquireSRWLockExclusive(&g_lock);

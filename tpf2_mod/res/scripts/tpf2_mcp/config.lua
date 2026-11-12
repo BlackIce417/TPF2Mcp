@@ -26,7 +26,9 @@ M.module_path = source
 M.path_resolution = M.mod_dir and "MODULE_SOURCE" or "UNAVAILABLE"
 M.schema_version = 1
 M.snapshot_schema_version = 5
-M.snapshot_refresh_interval_seconds = 2
+-- World catalogs are cached per save; force_refresh explicitly invalidates them.
+-- Dynamic train and station-demand telemetry have separate collection paths.
+M.snapshot_refresh_interval_seconds = 0
 -- Compatibility setting expressed in NOMINAL 200 ms simulation updates.
 -- This is not a wall-clock rate: actual callback timing depends on the engine.
 -- For explicit throttling set vehicle_telemetry_report_interval_updates (0=off).

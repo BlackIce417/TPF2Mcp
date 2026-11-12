@@ -11,15 +11,22 @@ local dispatcher = require "tpf2_mcp/operations/dispatcher"
 local collection_session_id = tostring(os.time()) .. "-" .. tostring({}):gsub("[^%w]", "")
 
 local M = {}
+local session_generation = 0
 function M.session_id() return collection_session_id end
+function M.begin_session()
+    session_generation = session_generation + 1
+    collection_session_id = tostring(os.time()) .. "-" .. tostring({}):gsub("[^%w]", "") .. ":" .. tostring(session_generation)
+    known_signal_ids, signal_inventory_at = {}, nil
+end
 function M.export_reload_state()
-    return { version = 1, session_id = collection_session_id,
+    return { version = 1, session_id = collection_session_id, session_generation = session_generation,
         known_signal_ids = known_signal_ids, signal_inventory_at = signal_inventory_at }
 end
 function M.import_reload_state(value)
     assert(type(value) == "table" and value.version == 1 and type(value.session_id) == "string",
         "incompatible telemetry session")
     collection_session_id = value.session_id
+    session_generation = value.session_generation or 0
     known_signal_ids, signal_inventory_at = value.known_signal_ids, value.signal_inventory_at
 end
 
@@ -51,17 +58,7 @@ local function vec(value)
 end
 
 local function bounds_for(entity, errors)
-    if entity == nil then return nil, nil end
-    local volume = common.safe_get_component(entity, "BOUNDING_VOLUME", errors)
-    local bbox = common.field(volume, "bbox")
-    local minimum = vec(common.field(bbox, "min")) or vec(common.field(bbox, "bbMin"))
-    local maximum = vec(common.field(bbox, "max")) or vec(common.field(bbox, "bbMax"))
-    if minimum == nil or maximum == nil then return nil, nil end
-    return {
-        x = (minimum.x + maximum.x) / 2,
-        y = (minimum.y + maximum.y) / 2,
-        z = (minimum.z + maximum.z) / 2,
-    }, { min = minimum, max = maximum }
+    return common.bounds_for(entity, errors)
 end
 
 -- Position frames only need a center, not copies of min/max plus a bbox table.

@@ -5,7 +5,6 @@
 
 namespace {
 constexpr wchar_t kNetworkRefreshEvent[] = L"Local\\tpf2mcp_network_refresh_v1";
-constexpr DWORD kPeriodicNetworkRefreshMs = 60000;
 SRWLOCK g_start_lock = SRWLOCK_INIT;
 std::atomic_bool g_network_due{true};
 std::atomic_bool g_started{false};
@@ -14,8 +13,9 @@ HANDLE g_refresh_event = nullptr;
 DWORD WINAPI scheduler_thread(void*) noexcept
 {
     for (;;) {
-        const DWORD result = WaitForSingleObject(g_refresh_event, kPeriodicNetworkRefreshMs);
-        if (result != WAIT_OBJECT_0 && result != WAIT_TIMEOUT) return 0;
+        // Fixed assets are collected on save load or an explicit request only.
+        const DWORD result = WaitForSingleObject(g_refresh_event, INFINITE);
+        if (result != WAIT_OBJECT_0) return 0;
         g_network_due.store(true, std::memory_order_release);
     }
 }

@@ -12,6 +12,14 @@ local TRAIN_PASSENGER, TRAIN_FREIGHT, TRAIN_MIXED = 1, 2, 4
 local TRAIN_PARTS_COMPLETE, TRAIN_CARGO_COMPLETE = 65536, 131072
 local nan = 0 / 0
 local model_cache, cargo_weight_cache, track_speed_cache, motion_cache = {}, {}, {}, {}
+local model_binary_cache = {}
+local empty_vector, empty_edge = binary.vec3(nil), binary.edge(nil)
+local function encode_vector(value) return value and binary.vec3(value) or empty_vector end
+local function encode_edge(value)
+    if not value or (value.edge_entity_id == 0 and not value.valid and value.direction == 0
+        and (value.position01 == nil or value.position01 ~= value.position01)) then return empty_edge end
+    return binary.edge(value)
+end
 
 local function number(value, fallback)
     return type(value) == "number" and value == value and value or fallback
@@ -41,16 +49,7 @@ local function model_coordinates(value)
 end
 
 local function bounds_for(entity, errors)
-    local volume = common.safe_get_component(entity, "BOUNDING_VOLUME", errors)
-    local box = common.field(volume, "bbox")
-    local minimum = coordinates(common.field(box, "min")) or coordinates(common.field(box, "bbMin"))
-    local maximum = coordinates(common.field(box, "max")) or coordinates(common.field(box, "bbMax"))
-    if minimum == nil or maximum == nil then return nil, nil end
-    return {
-        x = (minimum.x + maximum.x) * 0.5,
-        y = (minimum.y + maximum.y) * 0.5,
-        z = (minimum.z + maximum.z) * 0.5,
-    }, { min = minimum, max = maximum }
+    return common.bounds_for(entity, errors)
 end
 
 local function model_descriptor(model_id)
@@ -140,12 +139,12 @@ local function load_rows(info, part_count)
                     local amount = number(raw_amount, 0)
                     local capacity = number(common.field(entry, "capacity"), 0)
                     if capacity > 0 and type(raw_amount) ~= "number" then complete = false end
-                    local id = cargo_id(entry, cargo_index - 1)
                     -- The live API exposes a fixed cargo-type vector for each
                     -- compartment. Empty unsupported entries have neither
                     -- capacity nor an observed amount and must not become
                     -- thousands of meaningless freight records.
                     local supported = capacity > 0 or type(raw_amount) == "number"
+                    local id = supported and cargo_id(entry, cargo_index - 1) or nil
                     if supported and id == 0 then
                         local row = { compartment = compartment_index - 1, amount = amount, capacity = capacity }
                         passengers[#passengers + 1] = row
@@ -237,21 +236,26 @@ local function encode_freight(row)
         binary.u32(row.amount) .. binary.u32(row.capacity) .. binary.f32(row.unit_weight) .. binary.f32(row.weight)
 end
 
-local function encode_part(row)
+local function encode_part(row, stamp)
+    local shape = model_binary_cache[row.model]
+    if not shape then
+        shape = binary.f32(row.model.length) .. binary.f32(row.model.width) .. binary.f32(row.model.height) ..
+            binary.f32(row.model.empty_weight) .. binary.f32(row.model.top_speed) .. binary.f32(row.model.power) ..
+            binary.f32(row.model.tractive_effort)
+        model_binary_cache[row.model] = shape
+    end
     return binary.u32(1) .. binary.u32(PART_SIZE) .. binary.u64(row.entity_id) .. binary.u64(row.train_id) ..
         binary.u32(row.model_id) .. binary.u16(row.index) .. binary.u16(row.part_count) .. binary.u32(row.flags) ..
-        binary.f32(row.model.length) .. binary.f32(row.model.width) .. binary.f32(row.model.height) ..
-        binary.f32(row.model.empty_weight) .. binary.f32(row.model.top_speed) .. binary.f32(row.model.power) ..
-        binary.f32(row.model.tractive_effort) .. binary.vec3(row.center) .. binary.vec3(row.front) .. binary.vec3(row.rear) ..
-        binary.aabb(row.bounds) .. binary.edge(row.front_edge) .. binary.edge(row.center_edge) .. binary.edge(row.rear_edge) ..
+        shape .. encode_vector(row.center) .. encode_vector(row.front) .. encode_vector(row.rear) ..
+        binary.aabb(row.bounds) .. encode_edge(row.front_edge) .. encode_edge(row.center_edge) .. encode_edge(row.rear_edge) ..
         binary.u32(row.passenger_count) .. binary.u32(row.passenger_capacity) .. binary.u32(row.passenger_offset) ..
         binary.u16(row.passenger_count_rows) .. binary.u16(row.passenger_compartments) ..
         binary.u32(row.freight_amount) .. binary.u32(row.freight_capacity) .. binary.f32(row.freight_weight_t) ..
         binary.u32(row.freight_offset) .. binary.u16(row.freight_count_rows) .. binary.u16(row.freight_compartments) ..
-        binary.u64(row.sequence) .. binary.u64(row.time_us)
+        stamp
 end
 
-local function encode_train(row)
+local function encode_train(row, stamp)
     return binary.u32(1) .. binary.u32(TRAIN_SIZE) .. binary.u64(row.entity_id) .. binary.u64(row.line_id) ..
         binary.u32(row.flags) .. binary.u32(row.state) .. binary.u32(row.parts_offset) .. binary.u16(row.parts_count) ..
         binary.u16(row.powered_count) .. binary.f32(row.total_length) .. binary.f32(row.empty_weight) ..
@@ -260,17 +264,19 @@ local function encode_train(row)
         binary.u32(row.freight_capacity) .. binary.u32(row.freight_offset) .. binary.u16(row.freight_count) .. binary.u16(0) ..
         binary.f32(row.technical_max_speed) .. binary.f32(row.track_limit) .. binary.f32(row.command_limit) ..
         binary.f32(row.effective_limit) .. binary.f32(row.current_speed) .. binary.f32(row.acceleration) ..
-        binary.f32(row.brake_deceleration) .. binary.vec3(row.center) .. binary.vec3(row.front) .. binary.vec3(row.rear) ..
-        binary.edge(row.front_edge) .. binary.edge(row.center_edge) .. binary.edge(row.rear_edge) ..
-        binary.u32(row.path_edge_index) .. binary.u32(row.path_edge_count) .. binary.u64(row.sequence) .. binary.u64(row.time_us)
+        binary.f32(row.brake_deceleration) .. encode_vector(row.center) .. encode_vector(row.front) .. encode_vector(row.rear) ..
+        encode_edge(row.front_edge) .. encode_edge(row.center_edge) .. encode_edge(row.rear_edge) ..
+        binary.u32(row.path_edge_index) .. binary.u32(row.path_edge_count) .. stamp
 end
 
-function M.publish(sequence)
+function M.publish(sequence, channel)
     if not native_loader.available then return false, { error = "native loader unavailable" } end
+    local publish_started_at = common.clock()
     local trains, parts, passenger_rows, freight_rows, errors = {}, {}, {}, {}, {}
     local sample_clock = game_time_seconds() or (common.clock and common.clock()) or (os and os.time and os.time()) or 0
     local sample_time_us = math.floor(math.max(0, sample_clock or 0) * 1000000)
     local passenger_counts, passenger_counts_verified = onboard_passenger_counts(errors)
+    local passengers_finished_at = common.clock()
     local vehicle_system = api and api.engine and api.engine.system and api.engine.system.transportVehicleSystem
     local get_info = vehicle_system and vehicle_system.getInfo
     common.safe_for_each_entity("TRANSPORT_VEHICLE", function(entity)
@@ -384,6 +390,7 @@ function M.publish(sequence)
         trains[#trains + 1] = train
     end, errors)
 
+    local collection_finished_at = common.clock()
     local trains_offset = FRAME_HEADER_SIZE
     local parts_offset = trains_offset + #trains * TRAIN_SIZE
     local passenger_offset = parts_offset + #parts * PART_SIZE
@@ -395,15 +402,32 @@ function M.publish(sequence)
         binary.u32(#passenger_rows), binary.u32(#freight_rows), binary.u32(trains_offset), binary.u32(parts_offset),
         binary.u32(passenger_offset), binary.u32(freight_offset), binary.u32(0), binary.u32(0),
     }
-    for _, row in ipairs(trains) do chunks[#chunks + 1] = encode_train(row) end
-    for _, row in ipairs(parts) do chunks[#chunks + 1] = encode_part(row) end
+    local stamp = binary.u64(sequence) .. binary.u64(sample_time_us)
+    for _, row in ipairs(trains) do chunks[#chunks + 1] = encode_train(row, stamp) end
+    for _, row in ipairs(parts) do chunks[#chunks + 1] = encode_part(row, stamp) end
     for _, row in ipairs(passenger_rows) do chunks[#chunks + 1] = encode_passenger(row) end
     for _, row in ipairs(freight_rows) do chunks[#chunks + 1] = encode_freight(row) end
     local payload = table.concat(chunks)
     if #payload ~= total_size then return false, { error = "binary size mismatch", actual = #payload, expected = total_size } end
-    return native_loader.publish_binary("train-wrappers-v1.bin", payload), {
+    local encoding_finished_at = common.clock()
+    if channel == "native-train-seed.bin" then
+        -- One static resource tail per session/consist change. The public v1
+        -- frame never contains this private Controller seed extension.
+        local tracks, resource_errors = {}, {}
+        local tracks_ok, tracks_error = common.safe_for_each_entity("BASE_EDGE_TRACK", function(entity)
+            tracks[#tracks + 1] = binary.u32(entity_id(entity)) .. binary.f32(track_speed_limit(entity_id(entity), resource_errors))
+        end, resource_errors)
+        if not tracks_ok or #resource_errors > 0 then return false, { error = "native static track resource collection failed: " .. tostring(tracks_error), errors = resource_errors } end
+        payload = payload .. binary.f32(cargo_unit_weight(0)) .. binary.u32(#tracks) .. table.concat(tracks)
+    end
+    local published = native_loader.publish_binary(channel or "train-wrappers-v1.bin", payload)
+    return published, {
         trains = #trains, parts = #parts, passenger_loads = #passenger_rows,
         freight_loads = #freight_rows, bytes = #payload, errors = errors,
+        passenger_scan_ms = (passengers_finished_at - publish_started_at) * 1000,
+        train_collection_ms = (collection_finished_at - passengers_finished_at) * 1000,
+        encode_ms = (encoding_finished_at - collection_finished_at) * 1000,
+        publish_ms = (common.clock() - encoding_finished_at) * 1000,
     }
 end
 

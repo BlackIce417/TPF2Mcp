@@ -36,6 +36,7 @@
     <ClInclude Include="shared_bus.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="command_bus.h"><Filter>头文件</Filter></ClInclude>
     <ClInclude Include="train_telemetry_protocol.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -62,10 +63,15 @@
     <ClCompile Include="shared_bus.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="command_bus.cpp"><Filter>源文件</Filter></ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="tpf2_loader.def">
       <Filter>源文件</Filter>
     </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="native_telemetry_bridge.cpp"><Filter>源文件</Filter></ClCompile>
+    <ClInclude Include="native_telemetry_bridge.h"><Filter>头文件</Filter></ClInclude>
   </ItemGroup>
 </Project>

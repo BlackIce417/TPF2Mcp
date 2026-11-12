@@ -33,6 +33,15 @@
     <ClInclude Include="native_command_ipc.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="train_motion.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="train_motion_math.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="loader_session.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -47,6 +56,13 @@
     <ClCompile Include="tpf2.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="train_motion.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="native_telemetry.cpp"><Filter>源文件</Filter></ClCompile>
+    <ClInclude Include="native_telemetry.h"><Filter>头文件</Filter></ClInclude>
   </ItemGroup>
   <ItemGroup>
     <MASM Include="speed_hook.asm">
